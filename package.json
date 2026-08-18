@@ -6,6 +6,6 @@
     "build": "echo \"Build complete\""
   },
   "dependencies": {
-    "hono": "^4.9.7"
+    "hono": "^4.13.3"
   }
 }
