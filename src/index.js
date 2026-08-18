@@ -170,6 +170,89 @@ function requireRole(...roles) {
     await next();
   };
 }
+app.get("/api/admin/hash-password", (c) => {
+  return c.html(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Admin Password Setup</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            max-width: 500px;
+            margin: 40px auto;
+            padding: 20px;
+          }
+          input, button {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 14px;
+            margin: 8px 0;
+            font-size: 16px;
+          }
+          button {
+            cursor: pointer;
+          }
+          #result {
+            word-break: break-all;
+            margin-top: 20px;
+          }
+        </style>
+      </head>
+      <body>
+        <h2>Admin Password Setup</h2>
+
+        <p>This is a temporary setup tool.</p>
+
+        <input id="key" type="password" placeholder="ADMIN_SETUP_KEY">
+
+        <input id="password" type="password"
+          placeholder="New admin password">
+
+        <button onclick="generate()">Generate Password Hash</button>
+
+        <pre id="result"></pre>
+
+        <script>
+          async function generate() {
+            const key = document.getElementById("key").value;
+            const password = document.getElementById("password").value;
+            const result = document.getElementById("result");
+
+            result.textContent = "Generating...";
+
+            try {
+              const response = await fetch(
+                "/api/admin/hash-password",
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "X-Admin-Setup-Key": key
+                  },
+                  body: JSON.stringify({ password })
+                }
+              );
+
+              const data = await response.json();
+
+              if (!response.ok) {
+                result.textContent =
+                  data.error || "Request failed";
+                return;
+              }
+
+              result.textContent = data.hash;
+            } catch (error) {
+              result.textContent = "Request failed";
+            }
+          }
+        </script>
+      </body>
+    </html>
+  `);
+});
 app.post("/api/admin/hash-password", async (c) => {
   const setupKey = c.req.header("X-Admin-Setup-Key");
 
