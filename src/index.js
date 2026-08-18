@@ -604,5 +604,141 @@ app.get("/logout", async (c) => {
     }
   });
 });
+app.get("/admin/create", (c) => {
+  return c.html(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Sibakane T & O Auto - Admin Setup</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      padding: 20px;
+    }
 
+    .box {
+      max-width: 420px;
+      margin: 30px auto;
+      background: white;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,.1);
+    }
+
+    input, button {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 13px;
+      margin-top: 10px;
+      border-radius: 8px;
+    }
+
+    input {
+      border: 1px solid #ccc;
+    }
+
+    button {
+      border: 0;
+      background: #222;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    #result {
+      margin-top: 15px;
+      padding: 10px;
+      word-break: break-word;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="box">
+
+  <h2>Sibakane T & O Auto</h2>
+  <h3>Create Admin Account</h3>
+
+  <input id="name" placeholder="Admin name">
+
+  <input id="email" type="email" placeholder="Admin email">
+
+  <input id="password" type="password"
+         placeholder="Admin password"
+         minlength="8">
+
+  <input id="setupKey" type="password"
+         placeholder="ADMIN_SETUP_KEY">
+
+  <button onclick="createAdmin()">
+    Create Admin Account
+  </button>
+
+  <div id="result"></div>
+
+</div>
+
+<script>
+async function createAdmin() {
+
+  const name = document.getElementById("name").value.trim();
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  const setupKey = document.getElementById("setupKey").value;
+  const result = document.getElementById("result");
+
+  if (!name || !email || password.length < 8 || !setupKey) {
+    result.textContent =
+      "Please complete all fields. Password must be at least 8 characters.";
+    return;
+  }
+
+  result.textContent = "Creating admin account...";
+
+  try {
+
+    const response = await fetch("/api/admin/create", {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json",
+        "X-Admin-Setup-Key": setupKey
+      },
+
+      body: JSON.stringify({
+        name,
+        email,
+        password
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      result.textContent = data.error || "Unable to create account.";
+      return;
+    }
+
+    result.textContent =
+      "✅ Admin account created successfully. You can now log in.";
+
+    document.getElementById("password").value = "";
+    document.getElementById("setupKey").value = "";
+
+  } catch (error) {
+
+    result.textContent =
+      "Request failed. Please try again.";
+
+  }
+}
+</script>
+
+</body>
+</html>
+  `);
+});
 export default app;
