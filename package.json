@@ -1,0 +1,11 @@
+{
+  "name": "sibakane-to-auto",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo \"Build complete\""
+  },
+  "dependencies": {
+    "hono": "^4.9.7"
+  }
+}
