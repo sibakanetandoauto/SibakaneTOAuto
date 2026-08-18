@@ -170,7 +170,25 @@ function requireRole(...roles) {
     await next();
   };
 }
+app.post("/api/admin/hash-password", async (c) => {
+  const setupKey = c.req.header("X-Admin-Setup-Key");
 
+  if (!setupKey || setupKey !== c.env.ADMIN_SETUP_KEY) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const body = await c.req.json().catch(() => null);
+
+  if (!body?.password || String(body.password).length < 12) {
+    return c.json({
+      error: "Password must be at least 12 characters"
+    }, 400);
+  }
+
+  const hash = await hashPassword(String(body.password));
+
+  return c.json({ hash });
+});
 app.get("/", (c) => {
   return c.json({
     system: "Sibakane T & O Auto",
