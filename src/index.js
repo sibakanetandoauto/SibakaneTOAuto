@@ -2,39 +2,83 @@ import { Hono } from "hono";
 
 const app = new Hono();
 
-const SESSION_DAYS = 7;
-const PBKDF2_ITERATIONS = 310000;
+app.get("/", (c) => {
+  return c.json({
+    system: "Sibakane T & O Auto",
+    status: "online",
+    version: "1.0.2"
+  });
+});
 
-function bytesToBase64(bytes) {
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
+app.get("/health", async (c) => {
+  try {
+    const result = await c.env.DB
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+      .all();
+
+    return c.json({
+      status: "healthy",
+      database: "connected",
+      tables: result.results
+    });
+  } catch (error) {
+    return c.json({
+      status: "error",
+      message: error.message
+    }, 500);
   }
-  return btoa(binary);
-}
+});
 
-function base64ToBytes(value) {
-  const binary = atob(value);
-  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
-}
+app.post("/api/admin/hash-password", async (c) => {
+  try {
+    const setupKey = c.req.header("X-Admin-Setup-Key");
 
-async function hashPassword(password) {
-  const encoder = new TextEncoder();
+    if (!setupKey || setupKey !== c.env.ADMIN_SETUP_KEY) {
+      return c.json({
+        success: false,
+        error: "Unauthorized"
+      }, 401);
+    }
 
-  const salt = crypto.getRandomValues(new Uint8Array(16));
+    const body = await c.req.json();
+    const password = body.password;
 
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(password),
-    "PBKDF2",
-    false,
-    ["deriveBits"]
-  );
+    if (!password || password.length < 8) {
+      return c.json({
+        success: false,
+        error: "Password must be at least 8 characters"
+      }, 400);
+    }
 
-  const derivedBits = await crypto.subtle.deriveBits(
-    {
-      name: "PBKDF2",
-      salt,
+    const encoder = new TextEncoder();
+
+    const passwordData = encoder.encode(password);
+
+    const hashBuffer = await crypto.subtle.digest(
+      "SHA-256",
+      passwordData
+    );
+
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+
+    const passwordHash = hashArray
+      .map(byte => byte.toString(16).padStart(2, "0"))
+      .join("");
+
+    return c.json({
+      success: true,
+      passwordHash
+    });
+
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: error.message
+    }, 500);
+  }
+});
+
+export default app;      salt,
       iterations: PBKDF2_ITERATIONS,
       hash: "SHA-256"
     },
