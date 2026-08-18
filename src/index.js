@@ -6,7 +6,7 @@ app.get("/", (c) => {
   return c.json({
     system: "Sibakane T & O Auto",
     status: "online",
-    version: "1.0.2"
+    version: "1.0.3"
   });
 });
 
@@ -27,6 +27,107 @@ app.get("/health", async (c) => {
       message: error.message
     }, 500);
   }
+});
+
+app.get("/admin/setup", (c) => {
+  return c.html(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Sibakane T & O Auto - Admin Setup</title>
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          background: #f5f5f5;
+          padding: 30px;
+        }
+        .box {
+          max-width: 420px;
+          margin: 40px auto;
+          background: white;
+          padding: 25px;
+          border-radius: 12px;
+          box-shadow: 0 4px 20px rgba(0,0,0,.1);
+        }
+        input, button {
+          width: 100%;
+          box-sizing: border-box;
+          padding: 14px;
+          margin-top: 10px;
+          border-radius: 8px;
+        }
+        input {
+          border: 1px solid #ccc;
+        }
+        button {
+          border: 0;
+          background: #222;
+          color: white;
+          font-weight: bold;
+        }
+        #result {
+          margin-top: 15px;
+          word-break: break-word;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="box">
+        <h2>Sibakane T & O Auto</h2>
+        <h3>Admin Password Setup</h3>
+
+        <input
+          id="password"
+          type="password"
+          placeholder="Enter admin password"
+          minlength="8"
+        >
+
+        <button onclick="generateHash()">
+          Generate Password Hash
+        </button>
+
+        <div id="result"></div>
+      </div>
+
+      <script>
+        async function generateHash() {
+          const password = document.getElementById("password").value;
+          const result = document.getElementById("result");
+
+          if (password.length < 8) {
+            result.textContent = "Password must be at least 8 characters.";
+            return;
+          }
+
+          result.textContent = "Requesting...";
+
+          try {
+            const response = await fetch("/api/admin/hash-password", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({ password })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+              result.textContent = data.error || "Request failed";
+              return;
+            }
+
+            result.textContent = data.passwordHash;
+          } catch (error) {
+            result.textContent = "Request failed";
+          }
+        }
+      </script>
+    </body>
+    </html>
+  `);
 });
 
 app.post("/api/admin/hash-password", async (c) => {
@@ -50,13 +151,11 @@ app.post("/api/admin/hash-password", async (c) => {
       }, 400);
     }
 
-    const encoder = new TextEncoder();
-
-    const passwordData = encoder.encode(password);
+    const data = new TextEncoder().encode(password);
 
     const hashBuffer = await crypto.subtle.digest(
       "SHA-256",
-      passwordData
+      data
     );
 
     const hashArray = Array.from(new Uint8Array(hashBuffer));
@@ -77,420 +176,5 @@ app.post("/api/admin/hash-password", async (c) => {
     }, 500);
   }
 });
-
-export default app;      salt,
-      iterations: PBKDF2_ITERATIONS,
-      hash: "SHA-256"
-    },
-    keyMaterial,
-    256
-  );
-
-  return `pbkdf2_sha256$${PBKDF2_ITERATIONS}$${bytesToBase64(salt)}$${bytesToBase64(new Uint8Array(derivedBits))}`;
-}
-
-async function verifyPassword(password, storedHash) {
-  try {
-    const parts = storedHash.split("$");
-
-    if (parts.length !== 4 || parts[0] !== "pbkdf2_sha256") {
-      return false;
-    }
-
-    const iterations = Number(parts[1]);
-
-    if (!Number.isInteger(iterations) || iterations < 100000) {
-      return false;
-    }
-
-    const salt = base64ToBytes(parts[2]);
-    const expected = base64ToBytes(parts[3]);
-
-    const keyMaterial = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(password),
-      "PBKDF2",
-      false,
-      ["deriveBits"]
-    );
-
-    const derivedBits = await crypto.subtle.deriveBits(
-      {
-        name: "PBKDF2",
-        salt,
-        iterations,
-        hash: "SHA-256"
-      },
-      keyMaterial,
-      expected.length * 8
-    );
-
-    const actual = new Uint8Array(derivedBits);
-
-    if (actual.length !== expected.length) {
-      return false;
-    }
-
-    let difference = 0;
-
-    for (let i = 0; i < actual.length; i++) {
-      difference |= actual[i] ^ expected[i];
-    }
-
-    return difference === 0;
-  } catch {
-    return false;
-  }
-}
-
-function getCookie(request, name) {
-  const cookieHeader = request.headers.get("Cookie") || "";
-
-  for (const cookie of cookieHeader.split(";")) {
-    const [key, ...valueParts] = cookie.trim().split("=");
-
-    if (key === name) {
-      return decodeURIComponent(valueParts.join("="));
-    }
-  }
-
-  return null;
-}
-
-function sessionCookie(sessionId, maxAge) {
-  return [
-    `session=${encodeURIComponent(sessionId)}`,
-    "HttpOnly",
-    "Secure",
-    "SameSite=Strict",
-    "Path=/",
-    `Max-Age=${maxAge}`
-  ].join("; ");
-}
-
-async function getCurrentUser(c) {
-  const sessionId = getCookie(c.req.raw, "session");
-
-  if (!sessionId) {
-    return null;
-  }
-
-  const session = await c.env.DB
-    .prepare(`
-      SELECT
-        sessions.id,
-        sessions.expires_at,
-        users.id AS user_id,
-        users.name,
-        users.email,
-        users.role,
-        users.active
-      FROM sessions
-      INNER JOIN users ON users.id = sessions.user_id
-      WHERE sessions.id = ?
-        AND sessions.expires_at > datetime('now')
-        AND users.active = 1
-      LIMIT 1
-    `)
-    .bind(sessionId)
-    .first();
-
-  return session || null;
-}
-
-function requireRole(...roles) {
-  return async (c, next) => {
-    const user = await getCurrentUser(c);
-
-    if (!user) {
-      return c.json({ error: "Authentication required" }, 401);
-    }
-
-    if (!roles.includes(user.role)) {
-      return c.json({ error: "Forbidden" }, 403);
-    }
-
-    c.set("user", user);
-    await next();
-  };
-}
-app.get("/api/admin/hash-password", (c) => {
-  return c.html(`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Admin Password Setup</title>
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            max-width: 500px;
-            margin: 40px auto;
-            padding: 20px;
-          }
-          input, button {
-            width: 100%;
-            box-sizing: border-box;
-            padding: 14px;
-            margin: 8px 0;
-            font-size: 16px;
-          }
-          button {
-            cursor: pointer;
-          }
-          #result {
-            word-break: break-all;
-            margin-top: 20px;
-          }
-        </style>
-      </head>
-      <body>
-        <h2>Admin Password Setup</h2>
-
-        <p>This is a temporary setup tool.</p>
-
-        <input id="key" type="password" placeholder="ADMIN_SETUP_KEY">
-
-        <input id="password" type="password"
-          placeholder="New admin password">
-
-        <button onclick="generate()">Generate Password Hash</button>
-
-        <pre id="result"></pre>
-
-        <script>
-          async function generate() {
-            const key = document.getElementById("key").value;
-            const password = document.getElementById("password").value;
-            const result = document.getElementById("result");
-
-            result.textContent = "Generating...";
-
-            try {
-              const response = await fetch(
-                "/api/admin/hash-password",
-                {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    "X-Admin-Setup-Key": key
-                  },
-                  body: JSON.stringify({ password })
-                }
-              );
-
-              const data = await response.json();
-
-              if (!response.ok) {
-                result.textContent =
-                  data.error || "Request failed";
-                return;
-              }
-
-              result.textContent = data.hash;
-            } catch (error) {
-              result.textContent = "Request failed";
-            }
-          }
-        </script>
-      </body>
-    </html>
-  `);
-});
-app.post("/api/admin/hash-password", async (c) => {
-  const setupKey = c.req.header("X-Admin-Setup-Key");
-
-  if (!setupKey || setupKey !== c.env.ADMIN_SETUP_KEY) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
-
-  const body = await c.req.json().catch(() => null);
-
-  if (!body?.password || String(body.password).length < 12) {
-    return c.json({
-      error: "Password must be at least 12 characters"
-    }, 400);
-  }
-
-  const hash = await hashPassword(String(body.password));
-
-  return c.json({ hash });
-});
-app.get("/", (c) => {
-  return c.json({
-    system: "Sibakane T & O Auto",
-    status: "online",
-    version: "1.0.0"
-  });
-});
-
-app.get("/api/health", async (c) => {
-  try {
-    const result = await c.env.DB
-      .prepare(
-        "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"
-      )
-      .all();
-
-    return c.json({
-      status: "healthy",
-      database: "connected",
-      tables: result.results
-    });
-  } catch {
-    return c.json(
-      {
-        status: "error",
-        database: "connection_failed"
-      },
-      500
-    );
-  }
-});
-
-app.post("/api/auth/login", async (c) => {
-  const body = await c.req.json().catch(() => null);
-
-  if (!body?.email || !body?.password) {
-    return c.json(
-      { error: "Email and password are required" },
-      400
-    );
-  }
-
-  const email = String(body.email).trim().toLowerCase();
-  const password = String(body.password);
-
-  const user = await c.env.DB
-    .prepare(`
-      SELECT id, name, email, password_hash, role, active
-      FROM users
-      WHERE lower(email) = ?
-      LIMIT 1
-    `)
-    .bind(email)
-    .first();
-
-  if (!user || !user.active) {
-    return c.json({ error: "Invalid email or password" }, 401);
-  }
-
-  const valid = await verifyPassword(password, user.password_hash);
-
-  if (!valid) {
-    return c.json({ error: "Invalid email or password" }, 401);
-  }
-
-  const sessionId = bytesToBase64(
-    crypto.getRandomValues(new Uint8Array(32))
-  );
-
-  const expiresAt = new Date(
-    Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000
-  ).toISOString();
-
-  await c.env.DB
-    .prepare(`
-      INSERT INTO sessions (id, user_id, expires_at)
-      VALUES (?, ?, ?)
-    `)
-    .bind(sessionId, user.id, expiresAt)
-    .run();
-
-  return new Response(
-    JSON.stringify({
-      success: true,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-      }
-    }),
-    {
-      status: 200,
-      headers: {
-        "Content-Type": "application/json",
-        "Set-Cookie": sessionCookie(
-          sessionId,
-          SESSION_DAYS * 24 * 60 * 60
-        )
-      }
-    }
-  );
-});
-
-app.post("/api/auth/logout", async (c) => {
-  const sessionId = getCookie(c.req.raw, "session");
-
-  if (sessionId) {
-    await c.env.DB
-      .prepare("DELETE FROM sessions WHERE id = ?")
-      .bind(sessionId)
-      .run();
-  }
-
-  return new Response(
-    JSON.stringify({ success: true }),
-    {
-      status: 200,
-      headers: {
-        "Content-Type": "application/json",
-        "Set-Cookie": sessionCookie("", 0)
-      }
-    }
-  );
-});
-
-app.get("/api/auth/me", async (c) => {
-  const user = await getCurrentUser(c);
-
-  if (!user) {
-    return c.json({ authenticated: false }, 401);
-  }
-
-  return c.json({
-    authenticated: true,
-    user: {
-      id: user.user_id,
-      name: user.name,
-      email: user.email,
-      role: user.role
-    }
-  });
-});
-
-app.get(
-  "/api/admin/test",
-  requireRole("admin"),
-  (c) => {
-    return c.json({
-      authorized: true,
-      area: "admin"
-    });
-  }
-);
-
-app.get(
-  "/api/hunter/test",
-  requireRole("hunter"),
-  (c) => {
-    return c.json({
-      authorized: true,
-      area: "hunter"
-    });
-  }
-);
-
-app.get(
-  "/api/dealership/test",
-  requireRole("dealership"),
-  (c) => {
-    return c.json({
-      authorized: true,
-      area: "dealership"
-    });
-  }
-);
 
 export default app;
