@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sibakane-to-auto",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-18",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "SibakaneTOAutoDB",
+      "database_id": "9f7db723-dee7-4aa9-ad86-5808fd29e766"
+    }
+  ]
+}
