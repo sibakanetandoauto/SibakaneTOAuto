@@ -2,167 +2,33 @@ import { Hono } from "hono";
 
 const app = new Hono();
 
-/*
-|--------------------------------------------------------------------------
-| Helpers
-|--------------------------------------------------------------------------
-*/
+const json = (c, data, status = 200) =>
+  c.json(data, status);
 
 async function hashPassword(password) {
-  const encoder = new TextEncoder();
+  const data = new TextEncoder().encode(password);
+  const hash = await crypto.subtle.digest("SHA-256", data);
 
-  const saltBytes = crypto.getRandomValues(new Uint8Array(16));
-
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(password),
-    "PBKDF2",
-    false,
-    ["deriveBits"]
-  );
-
-  const bits = await crypto.subtle.deriveBits(
-    {
-      name: "PBKDF2",
-      salt: saltBytes,
-      iterations: 100000,
-      hash: "SHA-256"
-    },
-    key,
-    256
-  );
-
-  const hashBytes = new Uint8Array(bits);
-
-  const toHex = (bytes) =>
-    Array.from(bytes)
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-
-  return `pbkdf2$100000$${toHex(saltBytes)}$${toHex(hashBytes)}`;
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
-function getCookie(request, name) {
-  const cookie = request.headers.get("Cookie") || "";
+function createSessionId() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
 
-  for (const part of cookie.split(";")) {
-    const [key, ...value] = part.trim().split("=");
-
-    if (key === name) {
-      return value.join("=");
-    }
-  }
-
-  return null;
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
-function htmlPage(title, body) {
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${title}</title>
-
-  <style>
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: #f5f5f5;
-      color: #222;
-    }
-
-    .container {
-      width: min(100% - 30px, 900px);
-      margin: 30px auto;
-    }
-
-    .card {
-      background: white;
-      padding: 25px;
-      border-radius: 14px;
-      box-shadow: 0 4px 18px rgba(0,0,0,.08);
-      margin-bottom: 20px;
-    }
-
-    input,
-    button,
-    select {
-      width: 100%;
-      padding: 13px;
-      margin-top: 10px;
-      border-radius: 8px;
-      font-size: 16px;
-    }
-
-    input,
-    select {
-      border: 1px solid #ccc;
-    }
-
-    button {
-      border: 0;
-      background: #222;
-      color: white;
-      font-weight: bold;
-      cursor: pointer;
-    }
-
-    a {
-      color: #222;
-      font-weight: bold;
-    }
-
-    .success {
-      background: #e8f7e8;
-      padding: 12px;
-      border-radius: 8px;
-      margin-top: 12px;
-    }
-
-    .error {
-      background: #ffe8e8;
-      padding: 12px;
-      border-radius: 8px;
-      margin-top: 12px;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-
-    th,
-    td {
-      text-align: left;
-      padding: 10px;
-      border-bottom: 1px solid #ddd;
-    }
-  </style>
-</head>
-
-<body>
-  <div class="container">
-    ${body}
-  </div>
-</body>
-</html>
-`;
-}
-
-/*
-|--------------------------------------------------------------------------
-| Public health endpoint
-|--------------------------------------------------------------------------
-*/
+/* =========================
+   PUBLIC
+========================= */
 
 app.get("/", (c) => {
-  return c.json({
+  return json(c, {
     system: "Sibakane T & O Auto",
     status: "online",
     version: "2.0.0"
@@ -177,215 +43,103 @@ app.get("/health", async (c) => {
       )
       .all();
 
-    return c.json({
+    return json(c, {
       status: "healthy",
       database: "connected",
       tables: result.results
     });
   } catch (error) {
-    return c.json(
-      {
-        status: "error",
-        message: error.message
-      },
-      500
-    );
+    return json(c, {
+      status: "error",
+      message: error.message
+    }, 500);
   }
 });
 
-/*
-|--------------------------------------------------------------------------
-| INITIAL ADMIN SETUP
-|--------------------------------------------------------------------------
-*/
+/* =========================
+   ADMIN INITIAL SETUP
+========================= */
 
-app.get("/admin/setup", async (c) => {
-  const existing = await c.env.DB
-    .prepare("SELECT COUNT(*) AS count FROM users")
-    .first();
-
-  if (Number(existing?.count || 0) > 0) {
-    return c.html(
-      htmlPage(
-        "Setup Complete",
-        `
-        <div class="card">
-          <h2>Sibakane T & O Auto</h2>
-          <h3>Admin Setup</h3>
-          <p>Initial administrator setup has already been completed.</p>
-          <p><a href="/login">Go to Login</a></p>
-        </div>
-        `
-      )
-    );
-  }
-
-  return c.html(
-    htmlPage(
-      "Admin Setup",
-      `
-      <div class="card">
-        <h2>Sibakane T & O Auto</h2>
-        <h3>Create First Administrator</h3>
-
-        <p>
-          This creates the first ADMIN account.
-          The setup key is your Cloudflare secret.
-        </p>
-
-        <form method="POST" action="/admin/setup">
-
-          <input
-            name="setupKey"
-            type="password"
-            placeholder="ADMIN_SETUP_KEY"
-            required
-          >
-
-          <input
-            name="name"
-            type="text"
-            placeholder="Administrator name"
-            required
-          >
-
-          <input
-            name="email"
-            type="email"
-            placeholder="Administrator email"
-            required
-          >
-
-          <input
-            name="password"
-            type="password"
-            placeholder="Password - minimum 8 characters"
-            minlength="8"
-            required
-          >
-
-          <button type="submit">
-            Create Administrator
-          </button>
-
-        </form>
-      </div>
-      `
-    )
-  );
-});
-
-app.post("/admin/setup", async (c) => {
+app.post("/api/admin/create", async (c) => {
   try {
-    const existing = await c.env.DB
-      .prepare("SELECT COUNT(*) AS count FROM users")
-      .first();
+    const setupKey = c.req.header("X-Admin-Setup-Key");
 
-    if (Number(existing?.count || 0) > 0) {
-      return c.text("Admin setup has already been completed.", 403);
+    if (!setupKey || setupKey !== c.env.ADMIN_SETUP_KEY) {
+      return json(c, {
+        success: false,
+        error: "Unauthorized"
+      }, 401);
     }
 
-    const body = await c.req.parseBody();
+    const body = await c.req.json();
 
-    const setupKey = String(body.setupKey || "");
     const name = String(body.name || "").trim();
     const email = String(body.email || "").trim().toLowerCase();
     const password = String(body.password || "");
 
-    if (setupKey !== c.env.ADMIN_SETUP_KEY) {
-      return c.text("Unauthorized", 401);
+    if (!name || !email || password.length < 8) {
+      return json(c, {
+        success: false,
+        error: "Name, email and password of at least 8 characters are required."
+      }, 400);
     }
 
-    if (!name || !email) {
-      return c.text("Name and email are required.", 400);
-    }
+    const existing = await c.env.DB
+      .prepare("SELECT id FROM users WHERE email = ?")
+      .bind(email)
+      .first();
 
-    if (password.length < 8) {
-      return c.text("Password must be at least 8 characters.", 400);
+    if (existing) {
+      return json(c, {
+        success: false,
+        error: "A user with this email already exists."
+      }, 409);
     }
 
     const passwordHash = await hashPassword(password);
 
-    const result = await c.env.DB
+    await c.env.DB
       .prepare(`
         INSERT INTO users
         (name, email, password_hash, role, active)
-        VALUES (?, ?, ?, 'ADMIN', 1)
+        VALUES (?, ?, ?, 'admin', 1)
       `)
       .bind(name, email, passwordHash)
       .run();
 
-    return c.html(
-      htmlPage(
-        "Admin Created",
-        `
-        <div class="card">
-          <h2>Administrator Created Successfully</h2>
+    return json(c, {
+      success: true,
+      message: "Admin account created successfully."
+    });
 
-          <p><strong>Name:</strong> ${name}</p>
-          <p><strong>Email:</strong> ${email}</p>
-          <p><strong>Role:</strong> ADMIN</p>
-
-          <p>
-            <a href="/login">Continue to Login</a>
-          </p>
-        </div>
-        `
-      )
-    );
   } catch (error) {
-    return c.text(`Setup error: ${error.message}`, 500);
+    return json(c, {
+      success: false,
+      error: error.message
+    }, 500);
   }
 });
 
-/*
-|--------------------------------------------------------------------------
-| LOGIN
-|--------------------------------------------------------------------------
-*/
+/* =========================
+   LOGIN
+========================= */
 
-app.get("/login", (c) => {
-  return c.html(
-    htmlPage(
-      "Login",
-      `
-      <div class="card">
-        <h2>Sibakane T & O Auto</h2>
-        <h3>Login</h3>
-
-        <form method="POST" action="/login">
-
-          <input
-            name="email"
-            type="email"
-            placeholder="Email"
-            required
-          >
-
-          <input
-            name="password"
-            type="password"
-            placeholder="Password"
-            required
-          >
-
-          <button type="submit">
-            Login
-          </button>
-
-        </form>
-      </div>
-      `
-    )
-  );
-});
-
-app.post("/login", async (c) => {
+app.post("/api/auth/login", async (c) => {
   try {
-    const body = await c.req.parseBody();
+    const body = await c.req.json();
 
-    const email = String(body.email || "").trim().toLowerCase();
+    const email = String(body.email || "")
+      .trim()
+      .toLowerCase();
+
     const password = String(body.password || "");
+
+    if (!email || !password) {
+      return json(c, {
+        success: false,
+        error: "Email and password are required."
+      }, 400);
+    }
 
     const user = await c.env.DB
       .prepare(`
@@ -397,66 +151,23 @@ app.post("/login", async (c) => {
       .bind(email)
       .first();
 
-    if (!user || Number(user.active) !== 1) {
-      return c.text("Invalid email or password.", 401);
+    if (!user || user.active !== 1) {
+      return json(c, {
+        success: false,
+        error: "Invalid email or password."
+      }, 401);
     }
 
-    /*
-     * For the first version, compare the stored PBKDF2 hash.
-     */
+    const passwordHash = await hashPassword(password);
 
-    const stored = String(user.password_hash || "");
-
-    const parts = stored.split("$");
-
-    if (parts.length !== 4 || parts[0] !== "pbkdf2") {
-      return c.text("Invalid password configuration.", 500);
+    if (passwordHash !== user.password_hash) {
+      return json(c, {
+        success: false,
+        error: "Invalid email or password."
+      }, 401);
     }
 
-    const iterations = Number(parts[1]);
-    const saltHex = parts[2];
-    const expectedHash = parts[3];
-
-    const hexToBytes = (hex) => {
-      const bytes = new Uint8Array(hex.length / 2);
-
-      for (let i = 0; i < bytes.length; i++) {
-        bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
-      }
-
-      return bytes;
-    };
-
-    const encoder = new TextEncoder();
-
-    const key = await crypto.subtle.importKey(
-      "raw",
-      encoder.encode(password),
-      "PBKDF2",
-      false,
-      ["deriveBits"]
-    );
-
-    const bits = await crypto.subtle.deriveBits(
-      {
-        name: "PBKDF2",
-        salt: hexToBytes(saltHex),
-        iterations,
-        hash: "SHA-256"
-      },
-      key,
-      256
-    );
-
-    const calculatedHash = Array.from(new Uint8Array(bits))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-
-    if (calculatedHash !== expectedHash) {
-      return c.text("Invalid email or password.", 401);
-    }
-
-    const sessionId = crypto.randomUUID();
+    const sessionId = createSessionId();
 
     const expiresAt = new Date(
       Date.now() + 1000 * 60 * 60 * 24 * 7
@@ -471,14 +182,138 @@ app.post("/login", async (c) => {
       .bind(sessionId, user.id, expiresAt)
       .run();
 
-    return new Response(null, {
-      status: 302,
-      headers: {
-        Location: "/dashboard",
-        "Set-Cookie":
-          `session=${sessionId}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=604800`
+    return json(c, {
+      success: true,
+      message: "Login successful.",
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      },
+      session: sessionId
+    });
+
+  } catch (error) {
+    return json(c, {
+      success: false,
+      error: error.message
+    }, 500);
+  }
+});
+
+/* =========================
+   CURRENT USER
+========================= */
+
+app.get("/api/auth/me", async (c) => {
+  try {
+    const sessionId = c.req.header("Authorization")?.replace(
+      "Bearer ",
+      ""
+    );
+
+    if (!sessionId) {
+      return json(c, {
+        success: false,
+        error: "Not authenticated."
+      }, 401);
+    }
+
+    const session = await c.env.DB
+      .prepare(`
+        SELECT
+          sessions.id,
+          sessions.expires_at,
+          users.id AS user_id,
+          users.name,
+          users.email,
+          users.role,
+          users.active
+        FROM sessions
+        JOIN users ON users.id = sessions.user_id
+        WHERE sessions.id = ?
+        LIMIT 1
+      `)
+      .bind(sessionId)
+      .first();
+
+    if (!session) {
+      return json(c, {
+        success: false,
+        error: "Invalid session."
+      }, 401);
+    }
+
+    if (new Date(session.expires_at) < new Date()) {
+      await c.env.DB
+        .prepare("DELETE FROM sessions WHERE id = ?")
+        .bind(sessionId)
+        .run();
+
+      return json(c, {
+        success: false,
+        error: "Session expired."
+      }, 401);
+    }
+
+    if (session.active !== 1) {
+      return json(c, {
+        success: false,
+        error: "Account disabled."
+      }, 403);
+    }
+
+    return json(c, {
+      success: true,
+      user: {
+        id: session.user_id,
+        name: session.name,
+        email: session.email,
+        role: session.role
       }
     });
+
+  } catch (error) {
+    return json(c, {
+      success: false,
+      error: error.message
+    }, 500);
+  }
+});
+
+/* =========================
+   LOGOUT
+========================= */
+
+app.post("/api/auth/logout", async (c) => {
+  try {
+    const sessionId = c.req.header("Authorization")?.replace(
+      "Bearer ",
+      ""
+    );
+
+    if (sessionId) {
+      await c.env.DB
+        .prepare("DELETE FROM sessions WHERE id = ?")
+        .bind(sessionId)
+        .run();
+    }
+
+    return json(c, {
+      success: true,
+      message: "Logged out."
+    });
+
+  } catch (error) {
+    return json(c, {
+      success: false,
+      error: error.message
+    }, 500);
+  }
+});
+
+export default app; });
   } catch (error) {
     return c.text(`Login error: ${error.message}`, 500);
   }
