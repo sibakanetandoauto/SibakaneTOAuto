@@ -4,8 +4,55 @@ const app = new Hono();
 
 /* =========================================================
    SIBAKANE T & O AUTO
-   PRODUCTION LEAD MANAGEMENT SYSTEM
+   PRODUCTION SYSTEM
+   =========================================================
+   ROLES
+   - ADMIN
+   - HUNTER
+   - DEALERSHIP
+
+   WORKFLOW
+   HUNTER -> SUBMIT LEAD
+   ADMIN  -> REVIEW / APPROVE / DECLINE / ASSIGN / COMMISSION
+   DEALER -> WORK LEAD / UPDATE STATUS
+   ADMIN  -> MARK COMMISSION PAYABLE / PAID
+
+   BRANDING
+   - Sibakane Purple
+   - Gold / Yellow
+   - White
+   - Dark Charcoal
+   - Mobile-first
 ========================================================= */
+
+
+/* =========================================================
+   BRAND CONFIGURATION
+========================================================= */
+
+const BRAND = {
+  name: "Sibakane T & O Auto",
+
+  /* Main brand colours */
+  purple: "#5B2A86",
+  purpleDark: "#3D1B5F",
+  purpleLight: "#7B43A8",
+
+  gold: "#F2C94C",
+  goldDark: "#D4A900",
+  goldLight: "#FFE58A",
+
+  white: "#FFFFFF",
+  charcoal: "#242424",
+  charcoalLight: "#3A3A3A",
+
+  background: "#F5F3F8",
+  border: "#E5DFEC",
+
+  /* Change this to the exact logo image path later if desired */
+  logo: ""
+};
+
 
 /* =========================================================
    HELPERS
@@ -13,12 +60,13 @@ const app = new Hono();
 
 async function hashPassword(password) {
   const data = new TextEncoder().encode(password);
-  const hash = await crypto.subtle.digest("SHA-256", data);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
 
-  return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, "0"))
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
 }
+
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -29,25 +77,114 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+
 function getSessionId(c) {
   const cookie = c.req.header("Cookie") || "";
   const match = cookie.match(/(?:^|;\s*)session_id=([^;]+)/);
+
   return match ? decodeURIComponent(match[1]) : null;
 }
+
 
 function redirect(c, location) {
   return c.redirect(location, 302);
 }
 
+
+async function getCurrentUser(c) {
+  const sessionId = getSessionId(c);
+
+  if (!sessionId) {
+    return null;
+  }
+
+  const session = await c.env.DB
+    .prepare(`
+      SELECT
+        sessions.id,
+        sessions.user_id,
+        sessions.expires_at,
+        users.name,
+        users.email,
+        users.role,
+        users.active
+      FROM sessions
+      JOIN users
+        ON users.id = sessions.user_id
+      WHERE sessions.id = ?
+        AND users.active = 1
+      LIMIT 1
+    `)
+    .bind(sessionId)
+    .first();
+
+  if (!session) {
+    return null;
+  }
+
+  if (
+    session.expires_at &&
+    new Date(session.expires_at) <= new Date()
+  ) {
+    await c.env.DB
+      .prepare("DELETE FROM sessions WHERE id = ?")
+      .bind(sessionId)
+      .run();
+
+    return null;
+  }
+
+  return session;
+}
+
+
+async function requireRole(c, role) {
+  const user = await getCurrentUser(c);
+
+  if (!user) {
+    return null;
+  }
+
+  if (user.role !== role) {
+    return false;
+  }
+
+  return user;
+}
+
+
+async function logActivity(
+  c,
+  userId,
+  action,
+  details = "",
+  leadId = null
+) {
+  await c.env.DB
+    .prepare(`
+      INSERT INTO activity_log
+      (user_id, lead_id, action, details)
+      VALUES (?, ?, ?, ?)
+    `)
+    .bind(
+      userId || null,
+      leadId || null,
+      action,
+      details
+    )
+    .run();
+}
+
+
 function now() {
   return new Date().toISOString();
 }
 
+
 function generateLeadReference() {
-  return `LEAD-${Date.now()}-${crypto.randomUUID()
-    .slice(0, 6)
-    .toUpperCase()}`;
+  return `LEAD-${Date.now()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
 }
+
 
 function statusLabel(status) {
   const labels = {
@@ -66,8 +203,9 @@ function statusLabel(status) {
     cancelled: "Cancelled"
   };
 
-  return labels[status] || status || "-";
+  return labels[status] || status;
 }
+
 
 function commissionLabel(status) {
   const labels = {
@@ -76,117 +214,77 @@ function commissionLabel(status) {
     paid: "Paid"
   };
 
-  return labels[status] || status || "Pending";
+  return labels[status] || status;
 }
 
-async function getCurrentUser(c) {
-  const sessionId = getSessionId(c);
-
-  if (!sessionId) return null;
-
-  const session = await c.env.DB.prepare(`
-    SELECT
-      sessions.id,
-      sessions.user_id,
-      sessions.expires_at,
-      users.name,
-      users.email,
-      users.role,
-      users.active
-    FROM sessions
-    JOIN users ON users.id = sessions.user_id
-    WHERE sessions.id = ?
-      AND users.active = 1
-    LIMIT 1
-  `).bind(sessionId).first();
-
-  if (!session) return null;
-
-  if (
-    session.expires_at &&
-    new Date(session.expires_at) <= new Date()
-  ) {
-    await c.env.DB.prepare(
-      "DELETE FROM sessions WHERE id = ?"
-    ).bind(sessionId).run();
-
-    return null;
-  }
-
-  return session;
-}
-
-async function requireRole(c, role) {
-  const user = await getCurrentUser(c);
-
-  if (!user) return null;
-  if (user.role !== role) return false;
-
-  return user;
-}
-
-async function logActivity(
-  c,
-  userId,
-  action,
-  details = "",
-  leadId = null
-) {
-  try {
-    await c.env.DB.prepare(`
-      INSERT INTO activity_log
-      (user_id, lead_id, action, details)
-      VALUES (?, ?, ?, ?)
-    `).bind(
-      userId || null,
-      leadId || null,
-      action,
-      details
-    ).run();
-  } catch (e) {
-    console.error("Activity log error:", e);
-  }
-}
 
 /* =========================================================
-   BRANDING
+   BRAND HEADER
 ========================================================= */
 
-const BRAND_PURPLE = "#5B2A86";
-const BRAND_PURPLE_DARK = "#3E1C5C";
-const BRAND_GOLD = "#F2C94C";
-const BRAND_GOLD_DARK = "#D9A900";
-const BRAND_CHARCOAL = "#252525";
+function brandLogo(size = "normal") {
 
-function brandMark() {
+  const logoImage = BRAND.logo
+    ? `
+      <img
+        src="${escapeHtml(BRAND.logo)}"
+        alt="${escapeHtml(BRAND.name)} logo"
+        class="brand-logo-image ${size}"
+      >
+    `
+    : `
+      <div class="brand-mark ${size}">
+        <span class="brand-mark-s">S</span>
+        <span class="brand-mark-t">T&O</span>
+      </div>
+    `;
+
   return `
-    <div class="brand-mark">
-      <div class="brand-icon">S</div>
-      <div>
-        <div class="brand-name">Sibakane T & O Auto</div>
-        <div class="brand-sub">AUTOMOTIVE LEAD MANAGEMENT</div>
+    <div class="brand-lockup">
+      ${logoImage}
+
+      <div class="brand-copy">
+        <div class="brand-name">
+          ${escapeHtml(BRAND.name)}
+        </div>
+
+        <div class="brand-tagline">
+          AUTOMOTIVE LEAD MANAGEMENT
+        </div>
       </div>
     </div>
   `;
 }
 
+
+/* =========================================================
+   GLOBAL STYLES
+========================================================= */
+
 function baseStyles() {
   return `
 <style>
+
 :root{
   --purple:#5B2A86;
-  --purple-dark:#3E1C5C;
+  --purple-dark:#3D1B5F;
+  --purple-light:#7B43A8;
+
   --gold:#F2C94C;
-  --gold-dark:#D9A900;
-  --charcoal:#252525;
-  --light:#F6F5F8;
+  --gold-dark:#D4A900;
+  --gold-light:#FFE58A;
+
   --white:#FFFFFF;
-  --border:#E7E3EB;
-  --muted:#737373;
+  --charcoal:#242424;
+  --charcoal-light:#3A3A3A;
+
+  --background:#F5F3F8;
+  --border:#E5DFEC;
+
   --success:#198754;
   --danger:#C62828;
-  --blue:#1565C0;
   --orange:#D97706;
+  --blue:#1565C0;
 }
 
 *{
@@ -199,60 +297,151 @@ html{
 
 body{
   margin:0;
-  font-family:Arial,Helvetica,sans-serif;
-  background:var(--light);
+  font-family:
+    Arial,
+    Helvetica,
+    sans-serif;
+  background:var(--background);
   color:var(--charcoal);
 }
 
-header{
-  background:linear-gradient(
-    135deg,
-    var(--purple-dark),
-    var(--purple)
-  );
-  color:white;
-  padding:15px 20px;
+a{
+  color:inherit;
+}
+
+button,
+input,
+select,
+textarea{
+  font-family:inherit;
+}
+
+
+/* =========================================================
+   BRAND
+========================================================= */
+
+.brand-lockup{
   display:flex;
-  justify-content:space-between;
   align-items:center;
-  gap:20px;
-  border-bottom:4px solid var(--gold);
-  box-shadow:0 4px 15px rgba(0,0,0,.15);
+  gap:12px;
 }
 
 .brand-mark{
-  display:flex;
-  align-items:center;
-  gap:11px;
-}
-
-.brand-icon{
-  width:42px;
-  height:42px;
-  border-radius:10px;
-  background:var(--gold);
-  color:var(--purple-dark);
+  width:48px;
+  height:48px;
+  border-radius:12px;
+  background:var(--purple);
+  border:3px solid var(--gold);
   display:flex;
   align-items:center;
   justify-content:center;
-  font-size:25px;
+  flex-direction:column;
+  line-height:1;
+  box-shadow:0 4px 12px rgba(0,0,0,.2);
+  flex-shrink:0;
+}
+
+.brand-mark.normal{
+  width:48px;
+  height:48px;
+}
+
+.brand-mark.large{
+  width:82px;
+  height:82px;
+  border-radius:20px;
+}
+
+.brand-mark-s{
+  color:var(--gold);
+  font-size:21px;
   font-weight:900;
-  box-shadow:0 2px 8px rgba(0,0,0,.2);
+}
+
+.brand-mark.large .brand-mark-s{
+  font-size:34px;
+}
+
+.brand-mark-t{
+  color:var(--white);
+  font-size:8px;
+  font-weight:900;
+  margin-top:3px;
+}
+
+.brand-mark.large .brand-mark-t{
+  font-size:12px;
+}
+
+.brand-logo-image{
+  width:48px;
+  height:48px;
+  object-fit:contain;
+}
+
+.brand-logo-image.large{
+  width:82px;
+  height:82px;
+}
+
+.brand-copy{
+  min-width:0;
 }
 
 .brand-name{
-  font-size:18px;
   font-weight:900;
-  letter-spacing:.2px;
+  font-size:18px;
+  color:var(--white);
+  line-height:1.1;
 }
 
-.brand-sub{
-  font-size:8px;
-  letter-spacing:1.3px;
+.brand-tagline{
   color:var(--gold);
-  margin-top:3px;
-  font-weight:bold;
+  font-size:9px;
+  font-weight:800;
+  letter-spacing:1px;
+  margin-top:4px;
 }
+
+
+/* =========================================================
+   HEADER
+========================================================= */
+
+header{
+  background:
+    linear-gradient(
+      135deg,
+      var(--purple-dark),
+      var(--purple)
+    );
+
+  color:var(--white);
+
+  padding:13px 20px;
+
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+
+  gap:18px;
+
+  border-bottom:4px solid var(--gold);
+
+  box-shadow:
+    0 3px 15px rgba(61,27,95,.25);
+}
+
+header h1{
+  margin:0;
+  font-size:19px;
+}
+
+
+/* =========================================================
+   NAV
+========================================================= */
 
 nav{
   display:flex;
@@ -260,16 +449,40 @@ nav{
   flex-wrap:wrap;
 }
 
-nav a{
+nav a,
+.btn{
   display:inline-block;
-  padding:9px 12px;
+
+  padding:9px 13px;
+
   border-radius:7px;
-  color:white;
-  background:rgba(255,255,255,.13);
+
   text-decoration:none;
+
+  border:0;
+
+  font-weight:800;
+
+  cursor:pointer;
+
   font-size:13px;
-  font-weight:bold;
-  border:1px solid rgba(255,255,255,.1);
+
+  transition:
+    transform .15s ease,
+    opacity .15s ease,
+    background .15s ease;
+}
+
+nav a:hover,
+.btn:hover{
+  transform:translateY(-1px);
+  opacity:.94;
+}
+
+nav a{
+  color:var(--white);
+  background:rgba(255,255,255,.12);
+  border:1px solid rgba(255,255,255,.15);
 }
 
 nav a:hover{
@@ -277,86 +490,206 @@ nav a:hover{
   color:var(--purple-dark);
 }
 
+.btn{
+  background:var(--purple);
+  color:var(--white);
+}
+
+.btn.green{
+  background:var(--success);
+}
+
+.btn.red{
+  background:var(--danger);
+}
+
+.btn.orange{
+  background:var(--orange);
+}
+
+.btn.blue{
+  background:var(--blue);
+}
+
+.btn.gray{
+  background:#666;
+}
+
+.btn.gold{
+  background:var(--gold);
+  color:var(--purple-dark);
+}
+
+
+/* =========================================================
+   MAIN
+========================================================= */
+
 main{
   max-width:1250px;
   margin:auto;
   padding:22px 16px;
 }
 
+
+/* =========================================================
+   CARDS
+========================================================= */
+
 .card{
-  background:white;
+  background:var(--white);
+
   padding:20px;
-  border-radius:13px;
-  border:1px solid var(--border);
-  box-shadow:0 4px 18px rgba(62,28,92,.06);
+
+  border-radius:12px;
+
+  box-shadow:
+    0 3px 15px rgba(61,27,95,.08);
+
   margin-bottom:18px;
+
+  border:1px solid var(--border);
 }
 
 .card h2{
-  margin-top:0;
   color:var(--purple-dark);
+  margin-top:0;
 }
+
+.card h3{
+  color:var(--purple);
+}
+
+
+/* =========================================================
+   BRAND CARD
+========================================================= */
+
+.brand-banner{
+  background:
+    linear-gradient(
+      135deg,
+      var(--purple-dark),
+      var(--purple)
+    );
+
+  color:var(--white);
+
+  border-radius:14px;
+
+  padding:20px;
+
+  margin-bottom:18px;
+
+  border-bottom:5px solid var(--gold);
+
+  box-shadow:
+    0 5px 20px rgba(61,27,95,.18);
+}
+
+.brand-banner .brand-name{
+  font-size:24px;
+}
+
+.brand-banner .brand-tagline{
+  font-size:11px;
+}
+
+
+/* =========================================================
+   STATS
+========================================================= */
 
 .grid{
   display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
+
+  grid-template-columns:
+    repeat(auto-fit,minmax(170px,1fr));
+
   gap:14px;
+
   margin-bottom:18px;
 }
 
 .stat{
-  background:white;
+  background:var(--white);
+
   padding:18px;
-  border-radius:13px;
-  border-left:5px solid var(--gold);
-  border-top:1px solid var(--border);
-  border-right:1px solid var(--border);
-  border-bottom:1px solid var(--border);
-  box-shadow:0 3px 15px rgba(0,0,0,.05);
+
+  border-radius:12px;
+
+  box-shadow:
+    0 3px 15px rgba(61,27,95,.06);
+
+  border-top:4px solid var(--gold);
 }
 
 .stat h3{
   margin:0;
-  font-size:13px;
-  color:var(--muted);
+  font-size:14px;
+  color:#777;
 }
 
 .stat strong{
   display:block;
-  font-size:27px;
+  font-size:30px;
   margin-top:8px;
   color:var(--purple-dark);
 }
 
+
+/* =========================================================
+   TABLE
+========================================================= */
+
 table{
   width:100%;
+
   border-collapse:collapse;
+
   min-width:850px;
 }
 
-th,td{
+th,
+td{
   padding:11px;
+
   border-bottom:1px solid #eee;
+
   text-align:left;
+
   vertical-align:top;
 }
 
 th{
-  background:#F8F6FA;
+  background:
+    #F7F3FA;
+
   color:var(--purple-dark);
-  font-size:13px;
+
+  font-weight:900;
 }
 
 .table-wrap{
   overflow-x:auto;
 }
 
+
+/* =========================================================
+   BADGES
+========================================================= */
+
 .badge{
   display:inline-block;
+
   padding:5px 8px;
+
   border-radius:6px;
-  background:#EEE;
+
+  background:#eee;
+
   font-size:12px;
+
   font-weight:bold;
 }
 
@@ -380,40 +713,77 @@ th{
   color:#145A9C;
 }
 
+.purple-badge{
+  background:#EEE2F7;
+  color:var(--purple-dark);
+}
+
+.gold-badge{
+  background:#FFF4C7;
+  color:#765D00;
+}
+
+
+/* =========================================================
+   FORMS
+========================================================= */
+
 .form-grid{
   display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+
+  grid-template-columns:
+    repeat(auto-fit,minmax(220px,1fr));
+
   gap:14px;
 }
 
 label{
   display:block;
+
   font-weight:bold;
+
   font-size:13px;
+
   margin-bottom:6px;
-  color:var(--purple-dark);
 }
 
-input,select,textarea{
+input,
+select,
+textarea{
   width:100%;
-  padding:12px;
-  border:1px solid #CCC;
+
+  padding:11px;
+
+  border:1px solid #ccc;
+
   border-radius:7px;
+
   font:inherit;
-  background:white;
+
+  background:#fff;
 }
 
 input:focus,
 select:focus,
 textarea:focus{
-  outline:2px solid rgba(242,201,76,.45);
+  outline:none;
+
   border-color:var(--purple);
+
+  box-shadow:
+    0 0 0 3px rgba(91,42,134,.12);
 }
 
 textarea{
   min-height:100px;
+
   resize:vertical;
 }
+
+
+/* =========================================================
+   ACTIONS
+========================================================= */
 
 .actions{
   display:flex;
@@ -421,63 +791,35 @@ textarea{
   flex-wrap:wrap;
 }
 
-.btn{
-  display:inline-block;
-  padding:10px 13px;
-  border-radius:7px;
-  text-decoration:none;
-  border:0;
-  font-weight:bold;
-  cursor:pointer;
-  font-size:13px;
-}
 
-.btn.primary{
-  background:var(--purple);
-  color:white;
-}
+/* =========================================================
+   NOTICES
+========================================================= */
 
-.btn.primary:hover{
-  background:var(--purple-dark);
-}
+.empty{
+  text-align:center;
 
-.btn.gold{
-  background:var(--gold);
-  color:var(--purple-dark);
-}
+  padding:25px;
 
-.btn.green{
-  background:var(--success);
-  color:white;
-}
-
-.btn.red{
-  background:var(--danger);
-  color:white;
-}
-
-.btn.blue{
-  background:var(--blue);
-  color:white;
-}
-
-.btn.gray{
-  background:#666;
-  color:white;
+  color:#777;
 }
 
 .notice{
   padding:13px;
+
   border-radius:8px;
-  background:#F0EAF6;
+
+  background:#F0E9F6;
+
   border-left:4px solid var(--purple);
+
   margin-bottom:15px;
 }
 
-.empty{
-  text-align:center;
-  padding:25px;
-  color:#777;
+.notice.gold{
+  background:#FFF8D9;
+
+  border-left-color:var(--gold-dark);
 }
 
 .amount{
@@ -486,166 +828,241 @@ textarea{
   color:var(--purple-dark);
 }
 
-.page-title{
+
+/* =========================================================
+   LOGIN PAGE
+========================================================= */
+
+.login-page{
+  min-height:100vh;
+
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(242,201,76,.18),
+      transparent 30%
+    ),
+    linear-gradient(
+      135deg,
+      var(--purple-dark),
+      var(--purple)
+    );
+
   display:flex;
+
   align-items:center;
-  justify-content:space-between;
-  gap:10px;
-  flex-wrap:wrap;
+
+  justify-content:center;
+
+  padding:20px;
 }
 
-.gold-line{
-  height:4px;
-  width:70px;
-  background:var(--gold);
-  border-radius:4px;
-  margin:8px 0 15px;
+.login-box{
+  width:100%;
+  max-width:430px;
+
+  background:var(--white);
+
+  padding:30px;
+
+  border-radius:18px;
+
+  box-shadow:
+    0 20px 60px rgba(0,0,0,.3);
+
+  border-top:7px solid var(--gold);
 }
 
-.footer{
+.login-brand{
   text-align:center;
-  color:#888;
-  font-size:12px;
-  padding:25px;
+
+  display:flex;
+
+  flex-direction:column;
+
+  align-items:center;
+
+  margin-bottom:24px;
 }
+
+.login-brand .brand-name{
+  color:var(--purple-dark);
+
+  font-size:25px;
+
+  margin-top:12px;
+}
+
+.login-brand .brand-tagline{
+  color:var(--purple);
+
+  font-size:10px;
+
+  margin-top:6px;
+}
+
+.login-subtitle{
+  text-align:center;
+
+  color:#777;
+
+  margin:8px 0 25px;
+}
+
+.login-button{
+  width:100%;
+
+  margin-top:22px;
+
+  padding:14px;
+
+  border:0;
+
+  border-radius:8px;
+
+  background:
+    linear-gradient(
+      135deg,
+      var(--purple),
+      var(--purple-dark)
+    );
+
+  color:white;
+
+  font-size:16px;
+
+  font-weight:bold;
+
+  border-bottom:4px solid var(--gold);
+
+  cursor:pointer;
+}
+
+.error{
+  background:#FFE5E5;
+
+  color:#A00000;
+
+  padding:12px;
+
+  border-radius:8px;
+
+  margin-bottom:15px;
+
+  text-align:center;
+}
+
+.login-footer{
+  margin-top:22px;
+
+  text-align:center;
+
+  font-size:11px;
+
+  color:#888;
+}
+
+.login-footer strong{
+  color:var(--purple);
+}
+
+
+/* =========================================================
+   RESPONSIVE
+========================================================= */
 
 @media(max-width:700px){
 
   header{
     align-items:flex-start;
+
     flex-direction:column;
+
     padding:14px;
   }
 
-  nav{
+  header nav{
     width:100%;
   }
 
-  nav a{
+  header nav a{
     flex:1;
     text-align:center;
     min-width:90px;
   }
 
   main{
-    padding:14px 9px;
-  }
-
-  .card{
-    padding:16px;
+    padding:15px 10px;
   }
 
   .brand-name{
     font-size:16px;
   }
 
+  .brand-tagline{
+    font-size:8px;
+  }
+
+  .card{
+    padding:15px;
+  }
+
+  .grid{
+    grid-template-columns:
+      repeat(2,minmax(0,1fr));
+  }
+
+  .stat{
+    padding:14px;
+  }
+
   .stat strong{
     font-size:24px;
   }
+
 }
+
+@media(max-width:430px){
+
+  .grid{
+    grid-template-columns:1fr;
+  }
+
+  .login-box{
+    padding:23px;
+  }
+
+}
+
 </style>
 `;
 }
 
+
 /* =========================================================
-   LOGIN
+   LOGIN PAGE
 ========================================================= */
 
 function loginPage(error = "") {
+
   return `
 <!DOCTYPE html>
+
 <html>
+
 <head>
+
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sibakane T & O Auto</title>
+
+<meta
+name="viewport"
+content="width=device-width,initial-scale=1"
+>
+
+<title>${escapeHtml(BRAND.name)}</title>
+
 ${baseStyles()}
-<style>
-.login-page{
-  min-height:100vh;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:20px;
-  background:
-    radial-gradient(circle at top left,#6d3a99 0,#3E1C5C 45%,#21112f 100%);
-}
 
-.login-box{
-  width:100%;
-  max-width:430px;
-  background:white;
-  border-radius:18px;
-  overflow:hidden;
-  box-shadow:0 20px 60px rgba(0,0,0,.3);
-}
-
-.login-top{
-  background:linear-gradient(135deg,var(--purple-dark),var(--purple));
-  color:white;
-  padding:30px 25px;
-  text-align:center;
-  border-bottom:5px solid var(--gold);
-}
-
-.login-logo{
-  width:64px;
-  height:64px;
-  margin:auto;
-  background:var(--gold);
-  color:var(--purple-dark);
-  border-radius:15px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-size:38px;
-  font-weight:900;
-}
-
-.login-title{
-  margin-top:13px;
-  font-size:25px;
-  font-weight:900;
-}
-
-.login-sub{
-  color:var(--gold);
-  font-size:10px;
-  letter-spacing:1.5px;
-  font-weight:bold;
-  margin-top:5px;
-}
-
-.login-body{
-  padding:25px;
-}
-
-.login-button{
-  width:100%;
-  padding:14px;
-  margin-top:20px;
-  border:0;
-  border-radius:8px;
-  background:var(--purple);
-  color:white;
-  font-size:16px;
-  font-weight:bold;
-  cursor:pointer;
-}
-
-.login-button:hover{
-  background:var(--purple-dark);
-}
-
-.error{
-  background:#FFE5E5;
-  color:#A00000;
-  padding:12px;
-  border-radius:8px;
-  margin-bottom:15px;
-  text-align:center;
-}
-</style>
 </head>
 
 <body>
@@ -654,21 +1071,17 @@ ${baseStyles()}
 
 <div class="login-box">
 
-<div class="login-top">
+<div class="login-brand">
 
-<div class="login-logo">S</div>
-
-<div class="login-title">
-Sibakane T & O Auto
-</div>
-
-<div class="login-sub">
-AUTOMOTIVE LEAD MANAGEMENT
-</div>
+${brandLogo("large")}
 
 </div>
 
-<div class="login-body">
+<div class="login-subtitle">
+
+Secure Lead Management System
+
+</div>
 
 ${error ? `
 <div class="error">
@@ -676,9 +1089,14 @@ ${escapeHtml(error)}
 </div>
 ` : ""}
 
-<form method="POST" action="/login">
+<form
+method="POST"
+action="/login"
+>
 
-<label>Email</label>
+<label>
+Email
+</label>
 
 <input
 type="email"
@@ -687,7 +1105,7 @@ required
 autocomplete="username"
 >
 
-<label style="margin-top:16px">
+<label style="margin-top:15px;">
 Password
 </label>
 
@@ -698,15 +1116,22 @@ required
 autocomplete="current-password"
 >
 
-<button class="login-button" type="submit">
+<button
+class="login-button"
+type="submit"
+>
 Login
 </button>
 
 </form>
 
-<div class="footer">
-Sibakane T & O Auto
-</div>
+<div class="login-footer">
+
+<strong>${escapeHtml(BRAND.name)}</strong>
+
+<br>
+
+Automotive Lead Management
 
 </div>
 
@@ -715,170 +1140,17 @@ Sibakane T & O Auto
 </div>
 
 </body>
+
 </html>
 `;
 }
 
-/* =========================================================
-   HOME
-========================================================= */
-
-app.get("/", async (c) => {
-
-  const user = await getCurrentUser(c);
-
-  if (!user) return c.html(loginPage());
-
-  if (user.role === "admin") {
-    return redirect(c, "/admin");
-  }
-
-  if (user.role === "hunter") {
-    return redirect(c, "/hunter");
-  }
-
-  if (user.role === "dealership") {
-    return redirect(c, "/dealership");
-  }
-
-  return c.text("Unknown account role.",403);
-});
 
 /* =========================================================
-   LOGIN
+   ADMIN DASHBOARD DATA
 ========================================================= */
 
-app.post("/login", async (c) => {
-
-  try {
-
-    const body = await c.req.parseBody();
-
-    const email = String(body.email || "")
-      .trim()
-      .toLowerCase();
-
-    const password = String(body.password || "");
-
-    if (!email || !password) {
-      return c.html(
-        loginPage("Please enter your email and password."),
-        400
-      );
-    }
-
-    const passwordHash = await hashPassword(password);
-
-    const user = await c.env.DB.prepare(`
-      SELECT
-        id,
-        name,
-        email,
-        password_hash,
-        role,
-        active
-      FROM users
-      WHERE LOWER(email) = ?
-      LIMIT 1
-    `).bind(email).first();
-
-    if (!user || !user.active) {
-      return c.html(
-        loginPage("Invalid email or password."),
-        401
-      );
-    }
-
-    if (user.password_hash !== passwordHash) {
-      return c.html(
-        loginPage("Invalid email or password."),
-        401
-      );
-    }
-
-    const sessionId = crypto.randomUUID();
-
-    const expiresAt = new Date(
-      Date.now() + 7 * 24 * 60 * 60 * 1000
-    ).toISOString();
-
-    await c.env.DB.prepare(`
-      INSERT INTO sessions
-      (id,user_id,expires_at)
-      VALUES (?,?,?)
-    `).bind(
-      sessionId,
-      user.id,
-      expiresAt
-    ).run();
-
-    await logActivity(
-      c,
-      user.id,
-      "login",
-      "User logged into the system"
-    );
-
-    c.header(
-      "Set-Cookie",
-      `session_id=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=604800`
-    );
-
-    return redirect(c,"/");
-
-  } catch(error) {
-
-    console.error(error);
-
-    return c.html(
-      loginPage("Login system error."),
-      500
-    );
-  }
-});
-
-/* =========================================================
-   LOGOUT
-========================================================= */
-
-app.get("/logout", async (c) => {
-
-  const sessionId = getSessionId(c);
-  const user = await getCurrentUser(c);
-
-  if (sessionId) {
-    await c.env.DB.prepare(
-      "DELETE FROM sessions WHERE id = ?"
-    ).bind(sessionId).run();
-  }
-
-  if (user) {
-    await logActivity(
-      c,
-      user.user_id,
-      "logout",
-      "User logged out"
-    );
-  }
-
-  c.header(
-    "Set-Cookie",
-    "session_id=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0"
-  );
-
-  return redirect(c,"/");
-});
-
-/* =========================================================
-   ADMIN DASHBOARD
-========================================================= */
-
-app.get("/admin", async (c) => {
-
-  const user = await requireRole(c,"admin");
-
-  if (!user) return redirect(c,"/");
-  if (user === false) return c.text("Forbidden",403);
+async function getDashboardData(c) {
 
   const results = await Promise.all([
 
@@ -899,7 +1171,7 @@ app.get("/admin", async (c) => {
     ).first(),
 
     c.env.DB.prepare(`
-      SELECT status,COUNT(*) AS total
+      SELECT status, COUNT(*) AS total
       FROM leads
       GROUP BY status
       ORDER BY status
@@ -907,25 +1179,29 @@ app.get("/admin", async (c) => {
 
     c.env.DB.prepare(`
       SELECT
-        COALESCE(SUM(commission_amount),0) AS total,
+        COUNT(*) AS total,
+        COALESCE(SUM(commission_amount),0) AS commission_total,
+
         COALESCE(
           SUM(
             CASE
-              WHEN commission_status='payable'
+              WHEN commission_status = 'payable'
               THEN commission_amount
               ELSE 0
             END
           ),0
-        ) AS payable,
+        ) AS payable_total,
+
         COALESCE(
           SUM(
             CASE
-              WHEN commission_status='paid'
+              WHEN commission_status = 'paid'
               THEN commission_amount
               ELSE 0
             END
           ),0
-        ) AS paid
+        ) AS paid_total
+
       FROM leads
     `).first(),
 
@@ -933,10 +1209,14 @@ app.get("/admin", async (c) => {
       SELECT
         leads.*,
         dealerships.name AS dealership_name
+
       FROM leads
+
       LEFT JOIN dealerships
-        ON dealerships.id=leads.dealership_id
+        ON dealerships.id = leads.dealership_id
+
       ORDER BY leads.id DESC
+
       LIMIT 10
     `).all(),
 
@@ -944,236 +1224,196 @@ app.get("/admin", async (c) => {
       SELECT
         activity_log.*,
         users.name AS user_name
+
       FROM activity_log
+
       LEFT JOIN users
-        ON users.id=activity_log.user_id
+        ON users.id = activity_log.user_id
+
       ORDER BY activity_log.id DESC
+
       LIMIT 10
     `).all()
 
   ]);
 
-  const statuses = results[4]?.results || [];
-  const recentLeads = results[6]?.results || [];
-  const activity = results[7]?.results || [];
-  const commissions = results[5] || {};
+  return {
 
-  return c.html(`
+    users:results[0]?.total || 0,
+
+    hunters:results[1]?.total || 0,
+
+    dealerships:results[2]?.total || 0,
+
+    leads:results[3]?.total || 0,
+
+    statuses:results[4]?.results || [],
+
+    commissions:results[5] || {},
+
+    recentLeads:results[6]?.results || [],
+
+    activity:results[7]?.results || []
+
+  };
+}
+
+
+/* =========================================================
+   ADMIN DASHBOARD
+========================================================= */
+
+function adminDashboard(user,data) {
+
+  const statusCards = data.statuses.length
+
+    ? data.statuses.map((item) => `
+
+<div class="stat">
+
+<h3>
+${escapeHtml(statusLabel(item.status))}
+</h3>
+
+<strong>
+${item.total}
+</strong>
+
+</div>
+
+`).join("")
+
+    : `
+<div class="card empty">
+No leads yet.
+</div>
+`;
+
+  return `
 <!DOCTYPE html>
+
 <html>
+
 <head>
+
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Admin Dashboard | Sibakane T & O Auto</title>
+
+<meta
+name="viewport"
+content="width=device-width,initial-scale=1"
+>
+
+<title>Admin Dashboard - ${escapeHtml(BRAND.name)}</title>
+
 ${baseStyles()}
+
 </head>
 
 <body>
 
 <header>
 
-${brandMark()}
+${brandLogo()}
 
 <nav>
-<a href="/admin">Dashboard</a>
-<a href="/admin/leads">Leads</a>
-<a href="/admin/hunters">Hunters</a>
-<a href="/admin/dealerships">Dealerships</a>
-<a href="/admin/users">Users</a>
-<a href="/logout">Logout</a>
+
+<a href="/admin">
+Dashboard
+</a>
+
+<a href="/admin/leads">
+Leads
+</a>
+
+<a href="/admin/hunters">
+Hunters
+</a>
+
+<a href="/admin/dealerships">
+Dealerships
+</a>
+
+<a href="/admin/users">
+Users
+</a>
+
+<a href="/logout">
+Logout
+</a>
+
 </nav>
 
 </header>
 
 <main>
 
-<div class="card">
+<div class="brand-banner">
 
-<div class="page-title">
+${brandLogo()}
 
-<div>
-<h2>Admin Control Centre</h2>
-<div class="gold-line"></div>
-</div>
+<p style="margin:12px 0 0;color:#fff;opacity:.9;">
 
-<span class="badge success">● System Online</span>
+Admin Control Centre
 
-</div>
-
-<p>
-Welcome <strong>${escapeHtml(user.name)}</strong>
 </p>
 
 </div>
 
-<div class="grid">
-
-<div class="stat">
-<h3>Total Users</h3>
-<strong>${results[0]?.total || 0}</strong>
-</div>
-
-<div class="stat">
-<h3>Active Hunters</h3>
-<strong>${results[1]?.total || 0}</strong>
-</div>
-
-<div class="stat">
-<h3>Active Dealerships</h3>
-<strong>${results[2]?.total || 0}</strong>
-</div>
-
-<div class="stat">
-<h3>Total Leads</h3>
-<strong>${results[3]?.total || 0}</strong>
-</div>
-
-<div class="stat">
-<h3>Payable Commission</h3>
-<strong>R${Number(commissions.payable || 0).toFixed(2)}</strong>
-</div>
-
-<div class="stat">
-<h3>Paid Commission</h3>
-<strong>R${Number(commissions.paid || 0).toFixed(2)}</strong>
-</div>
-
-</div>
 
 <div class="card">
 
-<h2>Lead Status</h2>
+<h2>
+Admin Control Centre
+</h2>
 
-<div class="grid">
+<p>
+Welcome
+<strong>
+${escapeHtml(user.name)}
+</strong>
+</p>
 
-${
-statuses.length
-? statuses.map(item => `
-<div class="stat">
-<h3>${escapeHtml(statusLabel(item.status))}</h3>
-<strong>${item.total}</strong>
-</div>
-`).join("")
-: `<div class="empty">No leads yet.</div>`
-}
+<p>
+${escapeHtml(user.email)}
+</p>
 
-</div>
+<p>
 
-</div>
-
-<div class="card">
-
-<div class="page-title">
-<h2>Recent Leads</h2>
-<a class="btn primary" href="/admin/leads">
-Manage All Leads
-</a>
-</div>
-
-<div class="table-wrap">
-
-<table>
-
-<tr>
-<th>Reference</th>
-<th>Customer</th>
-<th>Vehicle</th>
-<th>Dealership</th>
-<th>Status</th>
-<th>Commission</th>
-</tr>
-
-${
-recentLeads.length
-? recentLeads.map(lead => `
-<tr>
-
-<td>${escapeHtml(lead.lead_reference)}</td>
-
-<td>${escapeHtml(lead.customer_name)}</td>
-
-<td>${escapeHtml(lead.vehicle_interest || "-")}</td>
-
-<td>${escapeHtml(lead.dealership_name || "Unassigned")}</td>
-
-<td>
-<span class="badge">
-${escapeHtml(statusLabel(lead.status))}
+<span class="badge gold-badge">
+● SYSTEM ONLINE
 </span>
-</td>
 
-<td>
-R${Number(lead.commission_amount || 0).toFixed(2)}
-<br>
-<small>
-${escapeHtml(commissionLabel(lead.commission_status))}
-</small>
-</td>
-
-</tr>
-`).join("")
-: `
-<tr>
-<td colspan="6" class="empty">
-No leads yet.
-</td>
-</tr>
-`
-}
-
-</table>
+</p>
 
 </div>
 
-</div>
 
-<div class="card">
+<div class="grid">
 
-<h2>Recent Activity</h2>
+<div class="stat">
 
-${
-activity.length
-? activity.map(item => `
-<div style="padding:12px 0;border-bottom:1px solid #eee">
+<h3>
+Total Users
+</h3>
 
-<strong>${escapeHtml(item.action)}</strong>
-
-<div>${escapeHtml(item.details || "")}</div>
-
-<small>
-${escapeHtml(item.user_name || "System")}
-·
-${escapeHtml(item.created_at)}
-</small>
-
-</div>
-`).join("")
-: `<div class="empty">No activity yet.</div>`
-}
+<strong>
+${data.users}
+</strong>
 
 </div>
 
-</main>
 
-</body>
-</html>
-`);
-});
+<div class="stat">
 
-/* =========================================================
-   ADMIN LEADS
-========================================================= */
+<h3>
+Active Hunters
+</h3>
 
-app.get("/admin/leads", async (c) => {
+<strong>
+${data.hunters}
+</strong>
 
-  const user = await requireRole(c,"admin");
+</div>
 
-  if (!user) return redirect(c,"/");
-  if (user === false) return c.text("Forbidden",403);
 
-  const leads = await c.env.DB.prepare(`
-    SELECT
-      leads.*,
-      dealerships.name AS dealership_name,
-      hunter_users.name AS hunter_name
-  
+<div class
