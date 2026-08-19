@@ -4,9 +4,22 @@ const app = new Hono();
 
 /* =========================================================
    SIBAKANE T & O AUTO
-   BRANDED PRODUCTION SYSTEM
-   Purple • Gold/Yellow • White • Dark Charcoal
-========================================================= */
+   BRAND:
+   "Connecting you to your dream car without the hustle"
+   ========================================================= */
+
+const BRAND = {
+  name: "Sibakane T & O Auto",
+  tagline: "Connecting you to your dream car without the hustle",
+  purple: "#4B176D",
+  purpleDark: "#32104B",
+  purpleLight: "#6F2A91",
+  gold: "#F4C430",
+  goldDark: "#D4A900",
+  white: "#FFFFFF",
+  charcoal: "#211F24",
+  light: "#F7F4FA"
+};
 
 /* =========================================================
    HELPERS
@@ -81,7 +94,7 @@ function commissionLabel(status) {
 }
 
 /* =========================================================
-   SESSION
+   AUTH
 ========================================================= */
 
 async function getCurrentUser(c) {
@@ -158,63 +171,7 @@ async function logActivity(
 }
 
 /* =========================================================
-   BRANDING
-========================================================= */
-
-function brandLogo() {
-  return `
-    <div class="brand-lockup">
-      <div class="brand-mark">
-        <span>S</span>
-      </div>
-
-      <div class="brand-text">
-        <div class="brand-name">
-          SIBAKANE <span>T & O</span> AUTO
-        </div>
-
-        <div class="brand-tagline">
-          Your Journey. Our Commitment.
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-function brandedHeader(title, links = []) {
-  return `
-<header class="site-header">
-
-  <div class="header-inner">
-
-    <a href="/" class="header-brand">
-      ${brandLogo()}
-    </a>
-
-    <div class="header-right">
-
-      <div class="page-title">
-        ${escapeHtml(title)}
-      </div>
-
-      <nav class="main-nav">
-        ${links.map(link => `
-          <a href="${link.href}" class="${link.active ? "active" : ""}">
-            ${escapeHtml(link.label)}
-          </a>
-        `).join("")}
-      </nav>
-
-    </div>
-
-  </div>
-
-</header>
-`;
-}
-
-/* =========================================================
-   GLOBAL BRANDED CSS
+   BRANDING / SHARED CSS
 ========================================================= */
 
 function baseStyles() {
@@ -222,20 +179,15 @@ function baseStyles() {
 <style>
 
 :root{
-  --purple:#5b168b;
-  --purple-dark:#3b0b5c;
-  --purple-light:#7b2cbf;
-  --gold:#f4c430;
-  --gold-dark:#d4a900;
-  --white:#ffffff;
-  --charcoal:#211d24;
-  --background:#f6f3f8;
-  --muted:#77717b;
-  --border:#e7e1eb;
-  --green:#198754;
-  --red:#c62828;
-  --blue:#1565c0;
-  --orange:#d97706;
+  --purple:${BRAND.purple};
+  --purple-dark:${BRAND.purpleDark};
+  --purple-light:${BRAND.purpleLight};
+  --gold:${BRAND.gold};
+  --gold-dark:${BRAND.goldDark};
+  --white:${BRAND.white};
+  --charcoal:${BRAND.charcoal};
+  --light:${BRAND.light};
+  --border:#e7deeb;
 }
 
 *{
@@ -248,34 +200,40 @@ html{
 
 body{
   margin:0;
-  font-family:
-    Inter,
-    Arial,
-    Helvetica,
-    sans-serif;
-  background:var(--background);
+  font-family:Arial,Helvetica,sans-serif;
+  background:var(--light);
   color:var(--charcoal);
 }
 
-a{
-  color:inherit;
+/* ================= BRAND HEADER ================= */
+
+.site-header{
+  background:
+    linear-gradient(
+      135deg,
+      var(--purple-dark),
+      var(--purple)
+    );
+  color:white;
+  border-bottom:5px solid var(--gold);
+  box-shadow:0 5px 20px rgba(50,16,75,.20);
 }
 
-button,
-input,
-select,
-textarea{
-  font-family:inherit;
+.header-inner{
+  max-width:1300px;
+  margin:auto;
+  padding:15px 18px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:20px;
 }
 
-/* =========================================================
-   BRAND
-========================================================= */
-
-.brand-lockup{
+.brand{
   display:flex;
   align-items:center;
   gap:12px;
+  min-width:0;
 }
 
 .brand-mark{
@@ -287,230 +245,104 @@ textarea{
   display:flex;
   align-items:center;
   justify-content:center;
-  font-size:27px;
+  font-size:20px;
   font-weight:900;
-  box-shadow:0 4px 12px rgba(0,0,0,.18);
-  border:3px solid rgba(255,255,255,.9);
+  box-shadow:0 3px 10px rgba(0,0,0,.20);
+  flex-shrink:0;
 }
 
-.brand-mark span{
-  transform:skew(-8deg);
+.brand-text{
+  min-width:0;
 }
 
 .brand-name{
+  font-size:20px;
   font-weight:900;
-  font-size:19px;
-  letter-spacing:.4px;
-  color:#fff;
-}
-
-.brand-name span{
-  color:var(--gold);
+  line-height:1.1;
+  letter-spacing:.2px;
 }
 
 .brand-tagline{
-  color:#eee;
-  font-size:10px;
-  margin-top:3px;
-  letter-spacing:.7px;
-  text-transform:uppercase;
-}
-
-/* =========================================================
-   HEADER
-========================================================= */
-
-.site-header{
-  background:
-    linear-gradient(
-      135deg,
-      var(--purple-dark),
-      var(--purple)
-    );
   color:#fff;
-  border-bottom:4px solid var(--gold);
-  box-shadow:0 5px 20px rgba(59,11,92,.25);
+  opacity:.92;
+  font-size:11px;
+  margin-top:4px;
 }
 
-.header-inner{
-  max-width:1350px;
-  margin:auto;
-  padding:13px 18px;
+nav{
   display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:20px;
-}
-
-.header-brand{
-  text-decoration:none;
-}
-
-.header-right{
-  display:flex;
-  align-items:center;
-  justify-content:flex-end;
-  gap:18px;
   flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:7px;
 }
 
-.page-title{
-  color:#f4eafa;
+nav a{
+  display:inline-block;
+  padding:9px 12px;
+  border-radius:8px;
+  color:white;
+  text-decoration:none;
+  background:rgba(255,255,255,.12);
+  border:1px solid rgba(255,255,255,.15);
   font-size:13px;
   font-weight:700;
 }
 
-.main-nav{
-  display:flex;
-  gap:6px;
-  flex-wrap:wrap;
-}
-
-.main-nav a{
-  color:#fff;
-  background:rgba(255,255,255,.10);
-  border:1px solid rgba(255,255,255,.16);
-  padding:9px 12px;
-  border-radius:7px;
-  text-decoration:none;
-  font-size:12px;
-  font-weight:700;
-  transition:.2s;
-}
-
-.main-nav a:hover,
-.main-nav a.active{
+nav a:hover{
   background:var(--gold);
   color:var(--purple-dark);
 }
 
-/* =========================================================
-   PAGE
-========================================================= */
+/* ================= MAIN ================= */
 
 main{
   width:100%;
-  max-width:1350px;
+  max-width:1300px;
   margin:auto;
-  padding:25px 18px 45px;
+  padding:25px 17px 45px;
 }
 
 .card{
-  background:#fff;
+  background:white;
   padding:22px;
-  border-radius:14px;
+  border-radius:15px;
+  box-shadow:0 4px 18px rgba(50,16,75,.07);
   border:1px solid var(--border);
-  box-shadow:0 4px 18px rgba(59,11,92,.07);
   margin-bottom:18px;
 }
 
 .card h2{
-  margin-top:0;
   color:var(--purple-dark);
+  margin-top:0;
 }
-
-.card h3{
-  color:var(--purple);
-}
-
-/* =========================================================
-   BRAND HERO
-========================================================= */
-
-.brand-hero{
-  background:
-    linear-gradient(
-      135deg,
-      var(--purple-dark),
-      var(--purple)
-    );
-  color:white;
-  padding:28px;
-  border-radius:16px;
-  margin-bottom:20px;
-  position:relative;
-  overflow:hidden;
-  box-shadow:0 8px 25px rgba(59,11,92,.18);
-}
-
-.brand-hero:after{
-  content:"";
-  position:absolute;
-  width:190px;
-  height:190px;
-  right:-70px;
-  top:-80px;
-  border-radius:50%;
-  background:rgba(244,196,48,.15);
-}
-
-.brand-hero h1{
-  margin:0;
-  font-size:30px;
-  position:relative;
-  z-index:1;
-}
-
-.brand-hero h1 span{
-  color:var(--gold);
-}
-
-.brand-hero p{
-  margin:9px 0 0;
-  color:#f2eaf6;
-  position:relative;
-  z-index:1;
-}
-
-.gold-line{
-  width:70px;
-  height:4px;
-  background:var(--gold);
-  border-radius:5px;
-  margin:14px 0;
-}
-
-/* =========================================================
-   GRID
-========================================================= */
 
 .grid{
   display:grid;
-  grid-template-columns:
-    repeat(auto-fit,minmax(180px,1fr));
+  grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
   gap:15px;
   margin-bottom:20px;
 }
 
 .stat{
-  background:#fff;
-  padding:20px;
-  border-radius:13px;
-  border-left:5px solid var(--purple);
-  box-shadow:0 3px 15px rgba(0,0,0,.06);
+  background:white;
+  padding:19px;
+  border-radius:14px;
+  border:1px solid var(--border);
+  border-top:5px solid var(--gold);
+  box-shadow:0 4px 15px rgba(50,16,75,.06);
 }
 
 .stat h3{
   margin:0;
+  color:#777;
   font-size:13px;
-  color:var(--muted);
-  font-weight:700;
 }
 
 .stat strong{
   display:block;
-  font-size:29px;
-  color:var(--purple-dark);
+  color:var(--purple);
+  font-size:28px;
   margin-top:8px;
-}
-
-/* =========================================================
-   TABLES
-========================================================= */
-
-.table-wrap{
-  overflow-x:auto;
-  border-radius:10px;
 }
 
 table{
@@ -519,8 +351,7 @@ table{
   min-width:850px;
 }
 
-th,
-td{
+th,td{
   padding:12px;
   border-bottom:1px solid #eee;
   text-align:left;
@@ -529,29 +360,98 @@ td{
 
 th{
   background:var(--purple-dark);
-  color:#fff;
+  color:white;
+  font-size:13px;
+}
+
+.table-wrap{
+  overflow-x:auto;
+  border-radius:10px;
+}
+
+.badge{
+  display:inline-block;
+  padding:5px 9px;
+  border-radius:20px;
+  background:#eee;
   font-size:12px;
+  font-weight:800;
 }
 
-tr:hover td{
-  background:#fcfaff;
+.success{
+  background:#dff5e7;
+  color:#146c2e;
 }
 
-/* =========================================================
-   BUTTONS
-========================================================= */
+.warning{
+  background:#fff0d2;
+  color:#8a5700;
+}
+
+.danger{
+  background:#ffe0e0;
+  color:#a00000;
+}
+
+.info{
+  background:#e7dcf1;
+  color:var(--purple-dark);
+}
+
+.form-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:15px;
+}
+
+label{
+  display:block;
+  font-weight:800;
+  font-size:13px;
+  margin-bottom:7px;
+  color:var(--purple-dark);
+}
+
+input,
+select,
+textarea{
+  width:100%;
+  padding:12px;
+  border:1px solid #ccc;
+  border-radius:8px;
+  font:inherit;
+  background:white;
+}
+
+input:focus,
+select:focus,
+textarea:focus{
+  outline:3px solid rgba(244,196,48,.25);
+  border-color:var(--purple);
+}
+
+textarea{
+  min-height:105px;
+  resize:vertical;
+}
+
+.actions{
+  display:flex;
+  gap:7px;
+  flex-wrap:wrap;
+}
 
 .btn{
   display:inline-block;
   padding:10px 14px;
   border-radius:8px;
-  text-decoration:none;
   border:0;
-  cursor:pointer;
+  text-decoration:none;
   font-weight:800;
+  cursor:pointer;
   font-size:13px;
   background:var(--purple);
-  color:#fff;
+  color:white;
 }
 
 .btn:hover{
@@ -564,298 +464,104 @@ tr:hover td{
 }
 
 .btn.green{
-  background:var(--green);
-  color:#fff;
+  background:#198754;
+  color:white;
 }
 
 .btn.red{
-  background:var(--red);
-  color:#fff;
+  background:#c62828;
+  color:white;
 }
 
 .btn.blue{
-  background:var(--blue);
-  color:#fff;
-}
-
-.btn.orange{
-  background:var(--orange);
-  color:#fff;
+  background:#1565c0;
+  color:white;
 }
 
 .btn.gray{
   background:#666;
-  color:#fff;
-}
-
-.actions{
-  display:flex;
-  gap:7px;
-  flex-wrap:wrap;
-}
-
-/* =========================================================
-   BADGES
-========================================================= */
-
-.badge{
-  display:inline-block;
-  padding:5px 9px;
-  border-radius:20px;
-  background:#eee;
-  font-size:11px;
-  font-weight:800;
-}
-
-.badge.success{
-  background:#dff5e7;
-  color:#146c2e;
-}
-
-.badge.warning{
-  background:#fff0d2;
-  color:#8a5700;
-}
-
-.badge.danger{
-  background:#ffe0e0;
-  color:#a00000;
-}
-
-.badge.info{
-  background:#e1efff;
-  color:#145a9c;
-}
-
-.badge.brand{
-  background:#f0e5f7;
-  color:var(--purple-dark);
-}
-
-/* =========================================================
-   FORMS
-========================================================= */
-
-.form-grid{
-  display:grid;
-  grid-template-columns:
-    repeat(auto-fit,minmax(220px,1fr));
-  gap:15px;
-}
-
-label{
-  display:block;
-  font-weight:800;
-  font-size:13px;
-  margin-bottom:6px;
-  color:var(--purple-dark);
-}
-
-input,
-select,
-textarea{
-  width:100%;
-  padding:12px;
-  border:1px solid #d5ccd9;
-  border-radius:8px;
-  font-size:15px;
-  background:#fff;
-}
-
-input:focus,
-select:focus,
-textarea:focus{
-  outline:none;
-  border-color:var(--purple);
-  box-shadow:0 0 0 3px rgba(91,22,139,.10);
-}
-
-textarea{
-  min-height:110px;
-  resize:vertical;
+  color:white;
 }
 
 .notice{
   padding:14px;
   border-radius:9px;
-  background:#f3eafa;
-  border-left:4px solid var(--purple);
-  margin-bottom:17px;
+  background:#f3ebf7;
+  border-left:5px solid var(--gold);
+  margin-bottom:16px;
 }
 
 .empty{
   text-align:center;
-  padding:30px;
-  color:var(--muted);
+  padding:28px;
+  color:#777;
 }
 
 .amount{
-  color:var(--purple-dark);
-  font-weight:900;
   font-size:18px;
-}
-
-/* =========================================================
-   LOGIN
-========================================================= */
-
-.login-page{
-  min-height:100vh;
-  background:
-    radial-gradient(
-      circle at 15% 20%,
-      rgba(244,196,48,.18),
-      transparent 30%
-    ),
-    linear-gradient(
-      135deg,
-      #2b073f,
-      #5b168b 55%,
-      #3b0b5c
-    );
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:20px;
-}
-
-.login-shell{
-  width:100%;
-  max-width:450px;
-}
-
-.login-brand{
-  text-align:center;
-  margin-bottom:22px;
-}
-
-.login-brand .brand-lockup{
-  justify-content:center;
-}
-
-.login-brand .brand-name{
-  font-size:24px;
-}
-
-.login-brand .brand-tagline{
-  font-size:11px;
-}
-
-.login-card{
-  background:#fff;
-  border-radius:18px;
-  padding:30px;
-  box-shadow:0 20px 55px rgba(0,0,0,.28);
-  border-top:6px solid var(--gold);
-}
-
-.login-card h1{
-  text-align:center;
-  margin:0;
-  color:var(--purple-dark);
-  font-size:24px;
-}
-
-.login-subtitle{
-  text-align:center;
-  color:#777;
-  margin:8px 0 25px;
-}
-
-.login-btn{
-  width:100%;
-  margin-top:22px;
-  padding:14px;
-  border:0;
-  border-radius:9px;
-  background:var(--purple);
-  color:#fff;
-  font-size:16px;
   font-weight:900;
-  cursor:pointer;
+  color:var(--purple);
 }
 
-.login-btn:hover{
-  background:var(--purple-dark);
+.page-title{
+  color:var(--purple-dark);
+  margin-bottom:5px;
 }
 
-.login-footer{
-  text-align:center;
-  margin-top:20px;
-  color:#aaa;
+.section-label{
+  color:var(--purple);
+  font-weight:900;
+  text-transform:uppercase;
   font-size:11px;
+  letter-spacing:1px;
 }
 
-.error{
-  background:#ffe5e5;
-  color:#a00000;
-  padding:12px;
-  border-radius:8px;
-  margin-bottom:15px;
+.footer-brand{
   text-align:center;
+  padding:25px 15px;
+  color:#777;
+  font-size:12px;
 }
 
-/* =========================================================
-   MOBILE
-========================================================= */
+.footer-brand strong{
+  color:var(--purple);
+}
 
-@media(max-width:760px){
+@media(max-width:700px){
 
   .header-inner{
     flex-direction:column;
-    align-items:flex-start;
+    align-items:stretch;
   }
 
-  .header-right{
-    width:100%;
-    align-items:flex-start;
-    flex-direction:column;
+  .brand{
+    justify-content:center;
   }
 
-  .main-nav{
-    width:100%;
+  nav{
+    justify-content:center;
   }
 
-  .main-nav a{
-    flex:1;
-    text-align:center;
+  nav a{
+    font-size:12px;
+    padding:8px 10px;
   }
 
   main{
-    padding:15px 10px 35px;
-  }
-
-  .brand-hero{
-    padding:22px;
-  }
-
-  .brand-hero h1{
-    font-size:24px;
+    padding:16px 10px 35px;
   }
 
   .card{
-    padding:17px;
-  }
-
-  .grid{
-    grid-template-columns:1fr 1fr;
-  }
-
-}
-
-@media(max-width:430px){
-
-  .grid{
-    grid-template-columns:1fr;
+    padding:16px;
+    border-radius:12px;
   }
 
   .brand-name{
-    font-size:16px;
+    font-size:18px;
   }
 
-  .brand-mark{
-    width:43px;
-    height:43px;
+  .brand-tagline{
+    font-size:10px;
   }
 
 }
@@ -865,7 +571,62 @@ textarea{
 }
 
 /* =========================================================
-   LOGIN PAGE
+   BRAND HEADER
+========================================================= */
+
+function brandedHeader(title, links = []) {
+  return `
+<header class="site-header">
+
+<div class="header-inner">
+
+<div class="brand">
+
+<div class="brand-mark">
+S
+</div>
+
+<div class="brand-text">
+
+<div class="brand-name">
+${escapeHtml(BRAND.name)}
+</div>
+
+<div class="brand-tagline">
+${escapeHtml(BRAND.tagline)}
+</div>
+
+</div>
+
+</div>
+
+<nav>
+
+${links.map(
+  ([href,label]) =>
+    `<a href="${href}">${escapeHtml(label)}</a>`
+).join("")}
+
+</nav>
+
+</div>
+
+</header>
+`;
+}
+
+function footer() {
+  return `
+<div class="footer-brand">
+<strong>${escapeHtml(BRAND.name)}</strong>
+<br>
+${escapeHtml(BRAND.tagline)}
+</div>
+`;
+}
+
+/* =========================================================
+   LOGIN
 ========================================================= */
 
 function loginPage(error = "") {
@@ -873,79 +634,182 @@ function loginPage(error = "") {
 <!DOCTYPE html>
 <html>
 <head>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sibakane T & O Auto</title>
+
+<title>${escapeHtml(BRAND.name)} — Login</title>
+
 ${baseStyles()}
+
+<style>
+
+body{
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  background:
+    radial-gradient(
+      circle at top left,
+      #6f2a91 0,
+      #4b176d 38%,
+      #32104b 100%
+    );
+}
+
+.login-shell{
+  width:100%;
+  max-width:440px;
+}
+
+.login-brand{
+  text-align:center;
+  color:white;
+  margin-bottom:20px;
+}
+
+.login-mark{
+  width:82px;
+  height:82px;
+  border-radius:22px;
+  background:var(--gold);
+  color:var(--purple-dark);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  margin:0 auto 14px;
+  font-size:38px;
+  font-weight:900;
+  box-shadow:0 10px 30px rgba(0,0,0,.25);
+}
+
+.login-brand h1{
+  margin:0;
+  font-size:27px;
+}
+
+.login-brand p{
+  margin:8px 0 0;
+  font-size:13px;
+  opacity:.92;
+}
+
+.login-box{
+  background:white;
+  border-radius:20px;
+  padding:28px;
+  box-shadow:0 20px 55px rgba(0,0,0,.25);
+  border-top:6px solid var(--gold);
+}
+
+.login-box h2{
+  margin-top:0;
+  color:var(--purple-dark);
+}
+
+.login-button{
+  width:100%;
+  padding:14px;
+  border:0;
+  border-radius:9px;
+  background:var(--purple);
+  color:white;
+  font-size:16px;
+  font-weight:900;
+  cursor:pointer;
+}
+
+.login-button:hover{
+  background:var(--purple-dark);
+}
+
+.error{
+  background:#ffe5e5;
+  color:#a00000;
+  padding:12px;
+  border-radius:8px;
+  margin-bottom:15px;
+  text-align:center;
+  font-size:13px;
+}
+
+.login-footer{
+  text-align:center;
+  color:#777;
+  font-size:11px;
+  margin-top:18px;
+}
+
+</style>
+
 </head>
 
 <body>
 
-<div class="login-page">
+<div class="login-shell">
 
-  <div class="login-shell">
+<div class="login-brand">
 
-    <div class="login-brand">
-      ${brandLogo()}
-    </div>
+<div class="login-mark">
+S
+</div>
 
-    <div class="login-card">
+<h1>${escapeHtml(BRAND.name)}</h1>
 
-      <h1>Welcome Back</h1>
+<p>${escapeHtml(BRAND.tagline)}</p>
 
-      <div class="login-subtitle">
-        Secure Management System
-      </div>
+</div>
 
-      ${
-        error
-          ? `
-          <div class="error">
-            ${escapeHtml(error)}
-          </div>
-          `
-          : ""
-      }
+<div class="login-box">
 
-      <form method="POST" action="/login">
+<h2>Secure Login</h2>
 
-        <label>Email</label>
+${
+error
+? `<div class="error">${escapeHtml(error)}</div>`
+: ""
+}
 
-        <input
-          type="email"
-          name="email"
-          required
-          autocomplete="username"
-          placeholder="Enter your email"
-        >
+<form method="POST" action="/login">
 
-        <br><br>
+<label>Email</label>
 
-        <label>Password</label>
+<input
+type="email"
+name="email"
+required
+autocomplete="username"
+>
 
-        <input
-          type="password"
-          name="password"
-          required
-          autocomplete="current-password"
-          placeholder="Enter your password"
-        >
+<br><br>
 
-        <button class="login-btn" type="submit">
-          LOGIN
-        </button>
+<label>Password</label>
 
-      </form>
+<input
+type="password"
+name="password"
+required
+autocomplete="current-password"
+>
 
-      <div class="login-footer">
-        SIBAKANE T & O AUTO
-        <br>
-        Your Journey. Our Commitment.
-      </div>
+<button
+class="login-button"
+type="submit"
+>
+Login
+</button>
 
-    </div>
+</form>
 
-  </div>
+<div class="login-footer">
+${escapeHtml(BRAND.name)}
+<br>
+${escapeHtml(BRAND.tagline)}
+</div>
+
+</div>
 
 </div>
 
@@ -955,7 +819,172 @@ ${baseStyles()}
 }
 
 /* =========================================================
-   ADMIN DASHBOARD DATA
+   HOME
+========================================================= */
+
+app.get("/", async (c) => {
+
+  const user = await getCurrentUser(c);
+
+  if (!user) {
+    return c.html(loginPage());
+  }
+
+  if (user.role === "admin") {
+    return redirect(c, "/admin");
+  }
+
+  if (user.role === "hunter") {
+    return redirect(c, "/hunter");
+  }
+
+  if (user.role === "dealership") {
+    return redirect(c, "/dealership");
+  }
+
+  return c.text("Unknown account role.", 403);
+});
+
+/* =========================================================
+   LOGIN
+========================================================= */
+
+app.post("/login", async (c) => {
+
+  try {
+
+    const body = await c.req.parseBody();
+
+    const email = String(body.email || "")
+      .trim()
+      .toLowerCase();
+
+    const password = String(body.password || "");
+
+    if (!email || !password) {
+      return c.html(
+        loginPage("Please enter your email and password."),
+        400
+      );
+    }
+
+    const passwordHash = await hashPassword(password);
+
+    const user = await c.env.DB
+      .prepare(`
+        SELECT
+          id,
+          name,
+          email,
+          password_hash,
+          role,
+          active
+        FROM users
+        WHERE LOWER(email) = ?
+        LIMIT 1
+      `)
+      .bind(email)
+      .first();
+
+    if (!user || !user.active) {
+      return c.html(
+        loginPage("Invalid email or password."),
+        401
+      );
+    }
+
+    if (user.password_hash !== passwordHash) {
+      return c.html(
+        loginPage("Invalid email or password."),
+        401
+      );
+    }
+
+    const sessionId = crypto.randomUUID();
+
+    const expiresAt = new Date(
+      Date.now() + 7 * 24 * 60 * 60 * 1000
+    ).toISOString();
+
+    await c.env.DB
+      .prepare(`
+        INSERT INTO sessions
+        (id,user_id,expires_at)
+        VALUES (?,?,?)
+      `)
+      .bind(
+        sessionId,
+        user.id,
+        expiresAt
+      )
+      .run();
+
+    await logActivity(
+      c,
+      user.id,
+      "login",
+      "User logged into the system"
+    );
+
+    c.header(
+      "Set-Cookie",
+      `session_id=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=604800`
+    );
+
+    return redirect(c, "/");
+
+  } catch (error) {
+
+    return c.html(
+      loginPage("Login system error."),
+      500
+    );
+
+  }
+
+});
+
+/* =========================================================
+   LOGOUT
+========================================================= */
+
+app.get("/logout", async (c) => {
+
+  const sessionId = getSessionId(c);
+  const user = await getCurrentUser(c);
+
+  if (sessionId) {
+
+    await c.env.DB
+      .prepare(
+        "DELETE FROM sessions WHERE id = ?"
+      )
+      .bind(sessionId)
+      .run();
+
+  }
+
+  if (user) {
+
+    await logActivity(
+      c,
+      user.user_id,
+      "logout",
+      "User logged out"
+    );
+
+  }
+
+  c.header(
+    "Set-Cookie",
+    "session_id=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0"
+  );
+
+  return redirect(c, "/");
+});
+
+/* =========================================================
+   ADMIN DASHBOARD
 ========================================================= */
 
 async function getDashboardData(c) {
@@ -1046,107 +1075,144 @@ async function getDashboardData(c) {
   };
 }
 
-/* =========================================================
-   ADMIN DASHBOARD
-========================================================= */
-
 function adminDashboard(user, data) {
-
-  const statusCards = data.statuses.length
-    ? data.statuses.map((item) => `
-      <div class="stat">
-        <h3>${escapeHtml(statusLabel(item.status))}</h3>
-        <strong>${item.total}</strong>
-      </div>
-    `).join("")
-    : `
-      <div class="card empty">
-        No leads yet.
-      </div>
-    `;
 
   return `
 <!DOCTYPE html>
 <html>
 <head>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Admin Dashboard | Sibakane T & O Auto</title>
+
+<title>${escapeHtml(BRAND.name)} — Admin</title>
+
 ${baseStyles()}
+
 </head>
 
 <body>
 
-${brandedHeader("Admin Control Centre", [
-  { href:"/admin", label:"Dashboard", active:true },
-  { href:"/admin/leads", label:"Leads" },
-  { href:"/admin/hunters", label:"Hunters" },
-  { href:"/admin/dealerships", label:"Dealerships" },
-  { href:"/admin/users", label:"Users" },
-  { href:"/logout", label:"Logout" }
+${brandedHeader("Admin",[
+  ["/admin","Dashboard"],
+  ["/admin/leads","Leads"],
+  ["/admin/hunters","Hunters"],
+  ["/admin/dealerships","Dealerships"],
+  ["/admin/users","Users"],
+  ["/logout","Logout"]
 ])}
 
 <main>
 
-<div class="brand-hero">
-
-  <h1>
-    SIBAKANE <span>T & O</span> AUTO
-  </h1>
-
-  <div class="gold-line"></div>
-
-  <p>
-    Admin Control Centre · Your Journey. Our Commitment.
-  </p>
-
-</div>
-
 <div class="card">
 
-  <h2>Welcome, ${escapeHtml(user.name)}</h2>
+<div class="section-label">
+Admin Control Centre
+</div>
 
-  <p>
-    You have full administrative control over leads,
-    hunters, dealerships and commission management.
-  </p>
+<h2 class="page-title">
+Welcome, ${escapeHtml(user.name)}
+</h2>
 
-  <span class="badge success">
-    ● SYSTEM ONLINE
-  </span>
+<p>
+Manage leads, Hunters, dealerships and commissions from one place.
+</p>
+
+<span class="badge success">
+● System Online
+</span>
 
 </div>
 
 <div class="grid">
 
-  <div class="stat">
-    <h3>Total Users</h3>
-    <strong>${data.users}</strong>
-  </div>
+<div class="stat">
+<h3>Total Users</h3>
+<strong>${data.users}</strong>
+</div>
 
-  <div class="stat">
-    <h3>Active Hunters</h3>
-    <strong>${data.hunters}</strong>
-  </div>
+<div class="stat">
+<h3>Active Hunters</h3>
+<strong>${data.hunters}</strong>
+</div>
 
-  <div class="stat">
-    <h3>Active Dealerships</h3>
-    <strong>${data.dealerships}</strong>
-  </div>
+<div class="stat">
+<h3>Active Dealerships</h3>
+<strong>${data.dealerships}</strong>
+</div>
 
-  <div class="stat">
-    <h3>Total Leads</h3>
-    <strong>${data.leads}</strong>
-  </div>
+<div class="stat">
+<h3>Total Leads</h3>
+<strong>${data.leads}</strong>
+</div>
 
-  <div class="stat">
-    <h3>Payable Commission</h3>
-    <strong>
-      R${Number(data.commissions.payable_total || 0).toFixed(2)}
-    </strong>
-  </div>
+<div class="stat">
+<h3>Payable Commission</h3>
+<strong>
+R${Number(data.commissions.payable_total || 0).toFixed(2)}
+</strong>
+</div>
 
-  <div class="stat">
-    <h3>Paid Commission</h3>
-    <strong>
-      R${N
+<div class="stat">
+<h3>Paid Commission</h3>
+<strong>
+R${Number(data.commissions.paid_total || 0).toFixed(2)}
+</strong>
+</div>
+
+</div>
+
+<div class="card">
+
+<div class="section-label">
+Lead Pipeline
+</div>
+
+<h2>Lead Status</h2>
+
+<div class="grid">
+
+${
+data.statuses.length
+? data.statuses.map(item => `
+<div class="stat">
+<h3>${escapeHtml(statusLabel(item.status))}</h3>
+<strong>${item.total}</strong>
+</div>
+`).join("")
+: `<div class="empty">No leads yet.</div>`
+}
+
+</div>
+
+</div>
+
+<div class="card">
+
+<h2>Recent Leads</h2>
+
+<div class="table-wrap">
+
+<table>
+
+<tr>
+<th>Reference</th>
+<th>Customer</th>
+<th>Vehicle</th>
+<th>Dealership</th>
+<th>Status</th>
+<th>Commission</th>
+</tr>
+
+${
+data.recentLeads.length
+? data.recentLeads.map(lead => `
+<tr>
+
+<td>${escapeHtml(lead.lead_reference)}</td>
+
+<td>${escapeHtml(lead.customer_name)}</td>
+
+<td>${escapeHtml(lead.vehicle_interest || "-")}</td>
+
+<td>${escapeHtml(lead.dealership_name || "Unassigned")}</td>
