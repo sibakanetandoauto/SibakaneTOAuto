@@ -4,55 +4,9 @@ const app = new Hono();
 
 /* =========================================================
    SIBAKANE T & O AUTO
-   PRODUCTION SYSTEM
-   =========================================================
-   ROLES
-   - ADMIN
-   - HUNTER
-   - DEALERSHIP
-
-   WORKFLOW
-   HUNTER -> SUBMIT LEAD
-   ADMIN  -> REVIEW / APPROVE / DECLINE / ASSIGN / COMMISSION
-   DEALER -> WORK LEAD / UPDATE STATUS
-   ADMIN  -> MARK COMMISSION PAYABLE / PAID
-
-   BRANDING
-   - Sibakane Purple
-   - Gold / Yellow
-   - White
-   - Dark Charcoal
-   - Mobile-first
+   BRANDED PRODUCTION SYSTEM
+   Purple • Gold/Yellow • White • Dark Charcoal
 ========================================================= */
-
-
-/* =========================================================
-   BRAND CONFIGURATION
-========================================================= */
-
-const BRAND = {
-  name: "Sibakane T & O Auto",
-
-  /* Main brand colours */
-  purple: "#5B2A86",
-  purpleDark: "#3D1B5F",
-  purpleLight: "#7B43A8",
-
-  gold: "#F2C94C",
-  goldDark: "#D4A900",
-  goldLight: "#FFE58A",
-
-  white: "#FFFFFF",
-  charcoal: "#242424",
-  charcoalLight: "#3A3A3A",
-
-  background: "#F5F3F8",
-  border: "#E5DFEC",
-
-  /* Change this to the exact logo image path later if desired */
-  logo: ""
-};
-
 
 /* =========================================================
    HELPERS
@@ -67,7 +21,6 @@ async function hashPassword(password) {
     .join("");
 }
 
-
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -77,26 +30,64 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-
 function getSessionId(c) {
   const cookie = c.req.header("Cookie") || "";
   const match = cookie.match(/(?:^|;\s*)session_id=([^;]+)/);
-
   return match ? decodeURIComponent(match[1]) : null;
 }
-
 
 function redirect(c, location) {
   return c.redirect(location, 302);
 }
 
+function now() {
+  return new Date().toISOString();
+}
+
+function generateLeadReference() {
+  return `LEAD-${Date.now()}-${crypto.randomUUID()
+    .slice(0, 6)
+    .toUpperCase()}`;
+}
+
+function statusLabel(status) {
+  const labels = {
+    new: "New",
+    pending: "Pending Review",
+    approved: "Approved",
+    declined: "Declined",
+    assigned: "Assigned",
+    contacted: "Customer Contacted",
+    interested: "Customer Interested",
+    appointment: "Appointment Set",
+    test_drive: "Test Drive",
+    negotiating: "Negotiating",
+    sold: "Sold",
+    lost: "Lost",
+    cancelled: "Cancelled"
+  };
+
+  return labels[status] || status;
+}
+
+function commissionLabel(status) {
+  const labels = {
+    pending: "Pending",
+    payable: "Payable",
+    paid: "Paid"
+  };
+
+  return labels[status] || status;
+}
+
+/* =========================================================
+   SESSION
+========================================================= */
 
 async function getCurrentUser(c) {
   const sessionId = getSessionId(c);
 
-  if (!sessionId) {
-    return null;
-  }
+  if (!sessionId) return null;
 
   const session = await c.env.DB
     .prepare(`
@@ -118,9 +109,7 @@ async function getCurrentUser(c) {
     .bind(sessionId)
     .first();
 
-  if (!session) {
-    return null;
-  }
+  if (!session) return null;
 
   if (
     session.expires_at &&
@@ -137,21 +126,14 @@ async function getCurrentUser(c) {
   return session;
 }
 
-
 async function requireRole(c, role) {
   const user = await getCurrentUser(c);
 
-  if (!user) {
-    return null;
-  }
-
-  if (user.role !== role) {
-    return false;
-  }
+  if (!user) return null;
+  if (user.role !== role) return false;
 
   return user;
 }
-
 
 async function logActivity(
   c,
@@ -175,90 +157,64 @@ async function logActivity(
     .run();
 }
 
-
-function now() {
-  return new Date().toISOString();
-}
-
-
-function generateLeadReference() {
-  return `LEAD-${Date.now()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
-}
-
-
-function statusLabel(status) {
-  const labels = {
-    new: "New",
-    pending: "Pending Review",
-    approved: "Approved",
-    declined: "Declined",
-    assigned: "Assigned",
-    contacted: "Customer Contacted",
-    interested: "Customer Interested",
-    appointment: "Appointment Set",
-    test_drive: "Test Drive",
-    negotiating: "Negotiating",
-    sold: "Sold",
-    lost: "Lost",
-    cancelled: "Cancelled"
-  };
-
-  return labels[status] || status;
-}
-
-
-function commissionLabel(status) {
-  const labels = {
-    pending: "Pending",
-    payable: "Payable",
-    paid: "Paid"
-  };
-
-  return labels[status] || status;
-}
-
-
 /* =========================================================
-   BRAND HEADER
+   BRANDING
 ========================================================= */
 
-function brandLogo(size = "normal") {
-
-  const logoImage = BRAND.logo
-    ? `
-      <img
-        src="${escapeHtml(BRAND.logo)}"
-        alt="${escapeHtml(BRAND.name)} logo"
-        class="brand-logo-image ${size}"
-      >
-    `
-    : `
-      <div class="brand-mark ${size}">
-        <span class="brand-mark-s">S</span>
-        <span class="brand-mark-t">T&O</span>
-      </div>
-    `;
-
+function brandLogo() {
   return `
     <div class="brand-lockup">
-      ${logoImage}
+      <div class="brand-mark">
+        <span>S</span>
+      </div>
 
-      <div class="brand-copy">
+      <div class="brand-text">
         <div class="brand-name">
-          ${escapeHtml(BRAND.name)}
+          SIBAKANE <span>T & O</span> AUTO
         </div>
 
         <div class="brand-tagline">
-          AUTOMOTIVE LEAD MANAGEMENT
+          Your Journey. Our Commitment.
         </div>
       </div>
     </div>
   `;
 }
 
+function brandedHeader(title, links = []) {
+  return `
+<header class="site-header">
+
+  <div class="header-inner">
+
+    <a href="/" class="header-brand">
+      ${brandLogo()}
+    </a>
+
+    <div class="header-right">
+
+      <div class="page-title">
+        ${escapeHtml(title)}
+      </div>
+
+      <nav class="main-nav">
+        ${links.map(link => `
+          <a href="${link.href}" class="${link.active ? "active" : ""}">
+            ${escapeHtml(link.label)}
+          </a>
+        `).join("")}
+      </nav>
+
+    </div>
+
+  </div>
+
+</header>
+`;
+}
 
 /* =========================================================
-   GLOBAL STYLES
+   GLOBAL BRANDED CSS
 ========================================================= */
 
 function baseStyles() {
@@ -266,25 +222,20 @@ function baseStyles() {
 <style>
 
 :root{
-  --purple:#5B2A86;
-  --purple-dark:#3D1B5F;
-  --purple-light:#7B43A8;
-
-  --gold:#F2C94C;
-  --gold-dark:#D4A900;
-  --gold-light:#FFE58A;
-
-  --white:#FFFFFF;
-  --charcoal:#242424;
-  --charcoal-light:#3A3A3A;
-
-  --background:#F5F3F8;
-  --border:#E5DFEC;
-
-  --success:#198754;
-  --danger:#C62828;
-  --orange:#D97706;
-  --blue:#1565C0;
+  --purple:#5b168b;
+  --purple-dark:#3b0b5c;
+  --purple-light:#7b2cbf;
+  --gold:#f4c430;
+  --gold-dark:#d4a900;
+  --white:#ffffff;
+  --charcoal:#211d24;
+  --background:#f6f3f8;
+  --muted:#77717b;
+  --border:#e7e1eb;
+  --green:#198754;
+  --red:#c62828;
+  --blue:#1565c0;
+  --orange:#d97706;
 }
 
 *{
@@ -298,6 +249,7 @@ html{
 body{
   margin:0;
   font-family:
+    Inter,
     Arial,
     Helvetica,
     sans-serif;
@@ -316,7 +268,6 @@ textarea{
   font-family:inherit;
 }
 
-
 /* =========================================================
    BRAND
 ========================================================= */
@@ -331,188 +282,280 @@ textarea{
   width:48px;
   height:48px;
   border-radius:12px;
-  background:var(--purple);
-  border:3px solid var(--gold);
+  background:var(--gold);
+  color:var(--purple-dark);
   display:flex;
   align-items:center;
   justify-content:center;
-  flex-direction:column;
-  line-height:1;
-  box-shadow:0 4px 12px rgba(0,0,0,.2);
-  flex-shrink:0;
-}
-
-.brand-mark.normal{
-  width:48px;
-  height:48px;
-}
-
-.brand-mark.large{
-  width:82px;
-  height:82px;
-  border-radius:20px;
-}
-
-.brand-mark-s{
-  color:var(--gold);
-  font-size:21px;
+  font-size:27px;
   font-weight:900;
+  box-shadow:0 4px 12px rgba(0,0,0,.18);
+  border:3px solid rgba(255,255,255,.9);
 }
 
-.brand-mark.large .brand-mark-s{
-  font-size:34px;
-}
-
-.brand-mark-t{
-  color:var(--white);
-  font-size:8px;
-  font-weight:900;
-  margin-top:3px;
-}
-
-.brand-mark.large .brand-mark-t{
-  font-size:12px;
-}
-
-.brand-logo-image{
-  width:48px;
-  height:48px;
-  object-fit:contain;
-}
-
-.brand-logo-image.large{
-  width:82px;
-  height:82px;
-}
-
-.brand-copy{
-  min-width:0;
+.brand-mark span{
+  transform:skew(-8deg);
 }
 
 .brand-name{
   font-weight:900;
-  font-size:18px;
-  color:var(--white);
-  line-height:1.1;
+  font-size:19px;
+  letter-spacing:.4px;
+  color:#fff;
+}
+
+.brand-name span{
+  color:var(--gold);
 }
 
 .brand-tagline{
-  color:var(--gold);
-  font-size:9px;
-  font-weight:800;
-  letter-spacing:1px;
-  margin-top:4px;
+  color:#eee;
+  font-size:10px;
+  margin-top:3px;
+  letter-spacing:.7px;
+  text-transform:uppercase;
 }
-
 
 /* =========================================================
    HEADER
 ========================================================= */
 
-header{
+.site-header{
   background:
     linear-gradient(
       135deg,
       var(--purple-dark),
       var(--purple)
     );
-
-  color:var(--white);
-
-  padding:13px 20px;
-
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-
-  gap:18px;
-
+  color:#fff;
   border-bottom:4px solid var(--gold);
-
-  box-shadow:
-    0 3px 15px rgba(61,27,95,.25);
+  box-shadow:0 5px 20px rgba(59,11,92,.25);
 }
 
-header h1{
-  margin:0;
-  font-size:19px;
-}
-
-
-/* =========================================================
-   NAV
-========================================================= */
-
-nav{
+.header-inner{
+  max-width:1350px;
+  margin:auto;
+  padding:13px 18px;
   display:flex;
-  gap:7px;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
+}
+
+.header-brand{
+  text-decoration:none;
+}
+
+.header-right{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:18px;
   flex-wrap:wrap;
 }
 
-nav a,
-.btn{
-  display:inline-block;
-
-  padding:9px 13px;
-
-  border-radius:7px;
-
-  text-decoration:none;
-
-  border:0;
-
-  font-weight:800;
-
-  cursor:pointer;
-
+.page-title{
+  color:#f4eafa;
   font-size:13px;
-
-  transition:
-    transform .15s ease,
-    opacity .15s ease,
-    background .15s ease;
+  font-weight:700;
 }
 
-nav a:hover,
-.btn:hover{
-  transform:translateY(-1px);
-  opacity:.94;
+.main-nav{
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
 }
 
-nav a{
-  color:var(--white);
-  background:rgba(255,255,255,.12);
-  border:1px solid rgba(255,255,255,.15);
+.main-nav a{
+  color:#fff;
+  background:rgba(255,255,255,.10);
+  border:1px solid rgba(255,255,255,.16);
+  padding:9px 12px;
+  border-radius:7px;
+  text-decoration:none;
+  font-size:12px;
+  font-weight:700;
+  transition:.2s;
 }
 
-nav a:hover{
+.main-nav a:hover,
+.main-nav a.active{
   background:var(--gold);
   color:var(--purple-dark);
 }
 
+/* =========================================================
+   PAGE
+========================================================= */
+
+main{
+  width:100%;
+  max-width:1350px;
+  margin:auto;
+  padding:25px 18px 45px;
+}
+
+.card{
+  background:#fff;
+  padding:22px;
+  border-radius:14px;
+  border:1px solid var(--border);
+  box-shadow:0 4px 18px rgba(59,11,92,.07);
+  margin-bottom:18px;
+}
+
+.card h2{
+  margin-top:0;
+  color:var(--purple-dark);
+}
+
+.card h3{
+  color:var(--purple);
+}
+
+/* =========================================================
+   BRAND HERO
+========================================================= */
+
+.brand-hero{
+  background:
+    linear-gradient(
+      135deg,
+      var(--purple-dark),
+      var(--purple)
+    );
+  color:white;
+  padding:28px;
+  border-radius:16px;
+  margin-bottom:20px;
+  position:relative;
+  overflow:hidden;
+  box-shadow:0 8px 25px rgba(59,11,92,.18);
+}
+
+.brand-hero:after{
+  content:"";
+  position:absolute;
+  width:190px;
+  height:190px;
+  right:-70px;
+  top:-80px;
+  border-radius:50%;
+  background:rgba(244,196,48,.15);
+}
+
+.brand-hero h1{
+  margin:0;
+  font-size:30px;
+  position:relative;
+  z-index:1;
+}
+
+.brand-hero h1 span{
+  color:var(--gold);
+}
+
+.brand-hero p{
+  margin:9px 0 0;
+  color:#f2eaf6;
+  position:relative;
+  z-index:1;
+}
+
+.gold-line{
+  width:70px;
+  height:4px;
+  background:var(--gold);
+  border-radius:5px;
+  margin:14px 0;
+}
+
+/* =========================================================
+   GRID
+========================================================= */
+
+.grid{
+  display:grid;
+  grid-template-columns:
+    repeat(auto-fit,minmax(180px,1fr));
+  gap:15px;
+  margin-bottom:20px;
+}
+
+.stat{
+  background:#fff;
+  padding:20px;
+  border-radius:13px;
+  border-left:5px solid var(--purple);
+  box-shadow:0 3px 15px rgba(0,0,0,.06);
+}
+
+.stat h3{
+  margin:0;
+  font-size:13px;
+  color:var(--muted);
+  font-weight:700;
+}
+
+.stat strong{
+  display:block;
+  font-size:29px;
+  color:var(--purple-dark);
+  margin-top:8px;
+}
+
+/* =========================================================
+   TABLES
+========================================================= */
+
+.table-wrap{
+  overflow-x:auto;
+  border-radius:10px;
+}
+
+table{
+  width:100%;
+  border-collapse:collapse;
+  min-width:850px;
+}
+
+th,
+td{
+  padding:12px;
+  border-bottom:1px solid #eee;
+  text-align:left;
+  vertical-align:top;
+}
+
+th{
+  background:var(--purple-dark);
+  color:#fff;
+  font-size:12px;
+}
+
+tr:hover td{
+  background:#fcfaff;
+}
+
+/* =========================================================
+   BUTTONS
+========================================================= */
+
 .btn{
+  display:inline-block;
+  padding:10px 14px;
+  border-radius:8px;
+  text-decoration:none;
+  border:0;
+  cursor:pointer;
+  font-weight:800;
+  font-size:13px;
   background:var(--purple);
-  color:var(--white);
+  color:#fff;
 }
 
-.btn.green{
-  background:var(--success);
-}
-
-.btn.red{
-  background:var(--danger);
-}
-
-.btn.orange{
-  background:var(--orange);
-}
-
-.btn.blue{
-  background:var(--blue);
-}
-
-.btn.gray{
-  background:#666;
+.btn:hover{
+  background:var(--purple-dark);
 }
 
 .btn.gold{
@@ -520,270 +563,30 @@ nav a:hover{
   color:var(--purple-dark);
 }
 
-
-/* =========================================================
-   MAIN
-========================================================= */
-
-main{
-  max-width:1250px;
-  margin:auto;
-  padding:22px 16px;
+.btn.green{
+  background:var(--green);
+  color:#fff;
 }
 
-
-/* =========================================================
-   CARDS
-========================================================= */
-
-.card{
-  background:var(--white);
-
-  padding:20px;
-
-  border-radius:12px;
-
-  box-shadow:
-    0 3px 15px rgba(61,27,95,.08);
-
-  margin-bottom:18px;
-
-  border:1px solid var(--border);
+.btn.red{
+  background:var(--red);
+  color:#fff;
 }
 
-.card h2{
-  color:var(--purple-dark);
-  margin-top:0;
+.btn.blue{
+  background:var(--blue);
+  color:#fff;
 }
 
-.card h3{
-  color:var(--purple);
+.btn.orange{
+  background:var(--orange);
+  color:#fff;
 }
 
-
-/* =========================================================
-   BRAND CARD
-========================================================= */
-
-.brand-banner{
-  background:
-    linear-gradient(
-      135deg,
-      var(--purple-dark),
-      var(--purple)
-    );
-
-  color:var(--white);
-
-  border-radius:14px;
-
-  padding:20px;
-
-  margin-bottom:18px;
-
-  border-bottom:5px solid var(--gold);
-
-  box-shadow:
-    0 5px 20px rgba(61,27,95,.18);
+.btn.gray{
+  background:#666;
+  color:#fff;
 }
-
-.brand-banner .brand-name{
-  font-size:24px;
-}
-
-.brand-banner .brand-tagline{
-  font-size:11px;
-}
-
-
-/* =========================================================
-   STATS
-========================================================= */
-
-.grid{
-  display:grid;
-
-  grid-template-columns:
-    repeat(auto-fit,minmax(170px,1fr));
-
-  gap:14px;
-
-  margin-bottom:18px;
-}
-
-.stat{
-  background:var(--white);
-
-  padding:18px;
-
-  border-radius:12px;
-
-  box-shadow:
-    0 3px 15px rgba(61,27,95,.06);
-
-  border-top:4px solid var(--gold);
-}
-
-.stat h3{
-  margin:0;
-  font-size:14px;
-  color:#777;
-}
-
-.stat strong{
-  display:block;
-  font-size:30px;
-  margin-top:8px;
-  color:var(--purple-dark);
-}
-
-
-/* =========================================================
-   TABLE
-========================================================= */
-
-table{
-  width:100%;
-
-  border-collapse:collapse;
-
-  min-width:850px;
-}
-
-th,
-td{
-  padding:11px;
-
-  border-bottom:1px solid #eee;
-
-  text-align:left;
-
-  vertical-align:top;
-}
-
-th{
-  background:
-    #F7F3FA;
-
-  color:var(--purple-dark);
-
-  font-weight:900;
-}
-
-.table-wrap{
-  overflow-x:auto;
-}
-
-
-/* =========================================================
-   BADGES
-========================================================= */
-
-.badge{
-  display:inline-block;
-
-  padding:5px 8px;
-
-  border-radius:6px;
-
-  background:#eee;
-
-  font-size:12px;
-
-  font-weight:bold;
-}
-
-.success{
-  background:#DFF5E7;
-  color:#146C2E;
-}
-
-.warning{
-  background:#FFF0D2;
-  color:#8A5700;
-}
-
-.danger{
-  background:#FFE0E0;
-  color:#A00000;
-}
-
-.info{
-  background:#E1EFFF;
-  color:#145A9C;
-}
-
-.purple-badge{
-  background:#EEE2F7;
-  color:var(--purple-dark);
-}
-
-.gold-badge{
-  background:#FFF4C7;
-  color:#765D00;
-}
-
-
-/* =========================================================
-   FORMS
-========================================================= */
-
-.form-grid{
-  display:grid;
-
-  grid-template-columns:
-    repeat(auto-fit,minmax(220px,1fr));
-
-  gap:14px;
-}
-
-label{
-  display:block;
-
-  font-weight:bold;
-
-  font-size:13px;
-
-  margin-bottom:6px;
-}
-
-input,
-select,
-textarea{
-  width:100%;
-
-  padding:11px;
-
-  border:1px solid #ccc;
-
-  border-radius:7px;
-
-  font:inherit;
-
-  background:#fff;
-}
-
-input:focus,
-select:focus,
-textarea:focus{
-  outline:none;
-
-  border-color:var(--purple);
-
-  box-shadow:
-    0 0 0 3px rgba(91,42,134,.12);
-}
-
-textarea{
-  min-height:100px;
-
-  resize:vertical;
-}
-
-
-/* =========================================================
-   ACTIONS
-========================================================= */
 
 .actions{
   display:flex;
@@ -791,233 +594,251 @@ textarea{
   flex-wrap:wrap;
 }
 
-
 /* =========================================================
-   NOTICES
+   BADGES
 ========================================================= */
 
-.empty{
-  text-align:center;
-
-  padding:25px;
-
-  color:#777;
+.badge{
+  display:inline-block;
+  padding:5px 9px;
+  border-radius:20px;
+  background:#eee;
+  font-size:11px;
+  font-weight:800;
 }
 
-.notice{
-  padding:13px;
-
-  border-radius:8px;
-
-  background:#F0E9F6;
-
-  border-left:4px solid var(--purple);
-
-  margin-bottom:15px;
+.badge.success{
+  background:#dff5e7;
+  color:#146c2e;
 }
 
-.notice.gold{
-  background:#FFF8D9;
-
-  border-left-color:var(--gold-dark);
+.badge.warning{
+  background:#fff0d2;
+  color:#8a5700;
 }
 
-.amount{
-  font-weight:bold;
-  font-size:18px;
+.badge.danger{
+  background:#ffe0e0;
+  color:#a00000;
+}
+
+.badge.info{
+  background:#e1efff;
+  color:#145a9c;
+}
+
+.badge.brand{
+  background:#f0e5f7;
   color:var(--purple-dark);
 }
 
+/* =========================================================
+   FORMS
+========================================================= */
+
+.form-grid{
+  display:grid;
+  grid-template-columns:
+    repeat(auto-fit,minmax(220px,1fr));
+  gap:15px;
+}
+
+label{
+  display:block;
+  font-weight:800;
+  font-size:13px;
+  margin-bottom:6px;
+  color:var(--purple-dark);
+}
+
+input,
+select,
+textarea{
+  width:100%;
+  padding:12px;
+  border:1px solid #d5ccd9;
+  border-radius:8px;
+  font-size:15px;
+  background:#fff;
+}
+
+input:focus,
+select:focus,
+textarea:focus{
+  outline:none;
+  border-color:var(--purple);
+  box-shadow:0 0 0 3px rgba(91,22,139,.10);
+}
+
+textarea{
+  min-height:110px;
+  resize:vertical;
+}
+
+.notice{
+  padding:14px;
+  border-radius:9px;
+  background:#f3eafa;
+  border-left:4px solid var(--purple);
+  margin-bottom:17px;
+}
+
+.empty{
+  text-align:center;
+  padding:30px;
+  color:var(--muted);
+}
+
+.amount{
+  color:var(--purple-dark);
+  font-weight:900;
+  font-size:18px;
+}
 
 /* =========================================================
-   LOGIN PAGE
+   LOGIN
 ========================================================= */
 
 .login-page{
   min-height:100vh;
-
   background:
     radial-gradient(
-      circle at top right,
-      rgba(242,201,76,.18),
+      circle at 15% 20%,
+      rgba(244,196,48,.18),
       transparent 30%
     ),
     linear-gradient(
       135deg,
-      var(--purple-dark),
-      var(--purple)
+      #2b073f,
+      #5b168b 55%,
+      #3b0b5c
     );
-
   display:flex;
-
   align-items:center;
-
   justify-content:center;
-
   padding:20px;
 }
 
-.login-box{
+.login-shell{
   width:100%;
-  max-width:430px;
-
-  background:var(--white);
-
-  padding:30px;
-
-  border-radius:18px;
-
-  box-shadow:
-    0 20px 60px rgba(0,0,0,.3);
-
-  border-top:7px solid var(--gold);
+  max-width:450px;
 }
 
 .login-brand{
   text-align:center;
+  margin-bottom:22px;
+}
 
-  display:flex;
-
-  flex-direction:column;
-
-  align-items:center;
-
-  margin-bottom:24px;
+.login-brand .brand-lockup{
+  justify-content:center;
 }
 
 .login-brand .brand-name{
-  color:var(--purple-dark);
-
-  font-size:25px;
-
-  margin-top:12px;
+  font-size:24px;
 }
 
 .login-brand .brand-tagline{
-  color:var(--purple);
+  font-size:11px;
+}
 
-  font-size:10px;
+.login-card{
+  background:#fff;
+  border-radius:18px;
+  padding:30px;
+  box-shadow:0 20px 55px rgba(0,0,0,.28);
+  border-top:6px solid var(--gold);
+}
 
-  margin-top:6px;
+.login-card h1{
+  text-align:center;
+  margin:0;
+  color:var(--purple-dark);
+  font-size:24px;
 }
 
 .login-subtitle{
   text-align:center;
-
   color:#777;
-
   margin:8px 0 25px;
 }
 
-.login-button{
+.login-btn{
   width:100%;
-
   margin-top:22px;
-
   padding:14px;
-
   border:0;
-
-  border-radius:8px;
-
-  background:
-    linear-gradient(
-      135deg,
-      var(--purple),
-      var(--purple-dark)
-    );
-
-  color:white;
-
+  border-radius:9px;
+  background:var(--purple);
+  color:#fff;
   font-size:16px;
-
-  font-weight:bold;
-
-  border-bottom:4px solid var(--gold);
-
+  font-weight:900;
   cursor:pointer;
 }
 
-.error{
-  background:#FFE5E5;
-
-  color:#A00000;
-
-  padding:12px;
-
-  border-radius:8px;
-
-  margin-bottom:15px;
-
-  text-align:center;
+.login-btn:hover{
+  background:var(--purple-dark);
 }
 
 .login-footer{
-  margin-top:22px;
-
   text-align:center;
-
+  margin-top:20px;
+  color:#aaa;
   font-size:11px;
-
-  color:#888;
 }
 
-.login-footer strong{
-  color:var(--purple);
+.error{
+  background:#ffe5e5;
+  color:#a00000;
+  padding:12px;
+  border-radius:8px;
+  margin-bottom:15px;
+  text-align:center;
 }
-
 
 /* =========================================================
-   RESPONSIVE
+   MOBILE
 ========================================================= */
 
-@media(max-width:700px){
+@media(max-width:760px){
 
-  header{
-    align-items:flex-start;
-
+  .header-inner{
     flex-direction:column;
-
-    padding:14px;
+    align-items:flex-start;
   }
 
-  header nav{
+  .header-right{
+    width:100%;
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  .main-nav{
     width:100%;
   }
 
-  header nav a{
+  .main-nav a{
     flex:1;
     text-align:center;
-    min-width:90px;
   }
 
   main{
-    padding:15px 10px;
+    padding:15px 10px 35px;
   }
 
-  .brand-name{
-    font-size:16px;
+  .brand-hero{
+    padding:22px;
   }
 
-  .brand-tagline{
-    font-size:8px;
+  .brand-hero h1{
+    font-size:24px;
   }
 
   .card{
-    padding:15px;
+    padding:17px;
   }
 
   .grid{
-    grid-template-columns:
-      repeat(2,minmax(0,1fr));
-  }
-
-  .stat{
-    padding:14px;
-  }
-
-  .stat strong{
-    font-size:24px;
+    grid-template-columns:1fr 1fr;
   }
 
 }
@@ -1028,8 +849,13 @@ textarea{
     grid-template-columns:1fr;
   }
 
-  .login-box{
-    padding:23px;
+  .brand-name{
+    font-size:16px;
+  }
+
+  .brand-mark{
+    width:43px;
+    height:43px;
   }
 
 }
@@ -1038,113 +864,95 @@ textarea{
 `;
 }
 
-
 /* =========================================================
    LOGIN PAGE
 ========================================================= */
 
 function loginPage(error = "") {
-
   return `
 <!DOCTYPE html>
-
 <html>
-
 <head>
-
 <meta charset="UTF-8">
-
-<meta
-name="viewport"
-content="width=device-width,initial-scale=1"
->
-
-<title>${escapeHtml(BRAND.name)}</title>
-
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sibakane T & O Auto</title>
 ${baseStyles()}
-
 </head>
 
 <body>
 
 <div class="login-page">
 
-<div class="login-box">
+  <div class="login-shell">
 
-<div class="login-brand">
+    <div class="login-brand">
+      ${brandLogo()}
+    </div>
 
-${brandLogo("large")}
+    <div class="login-card">
 
-</div>
+      <h1>Welcome Back</h1>
 
-<div class="login-subtitle">
+      <div class="login-subtitle">
+        Secure Management System
+      </div>
 
-Secure Lead Management System
+      ${
+        error
+          ? `
+          <div class="error">
+            ${escapeHtml(error)}
+          </div>
+          `
+          : ""
+      }
 
-</div>
+      <form method="POST" action="/login">
 
-${error ? `
-<div class="error">
-${escapeHtml(error)}
-</div>
-` : ""}
+        <label>Email</label>
 
-<form
-method="POST"
-action="/login"
->
+        <input
+          type="email"
+          name="email"
+          required
+          autocomplete="username"
+          placeholder="Enter your email"
+        >
 
-<label>
-Email
-</label>
+        <br><br>
 
-<input
-type="email"
-name="email"
-required
-autocomplete="username"
->
+        <label>Password</label>
 
-<label style="margin-top:15px;">
-Password
-</label>
+        <input
+          type="password"
+          name="password"
+          required
+          autocomplete="current-password"
+          placeholder="Enter your password"
+        >
 
-<input
-type="password"
-name="password"
-required
-autocomplete="current-password"
->
+        <button class="login-btn" type="submit">
+          LOGIN
+        </button>
 
-<button
-class="login-button"
-type="submit"
->
-Login
-</button>
+      </form>
 
-</form>
+      <div class="login-footer">
+        SIBAKANE T & O AUTO
+        <br>
+        Your Journey. Our Commitment.
+      </div>
 
-<div class="login-footer">
+    </div>
 
-<strong>${escapeHtml(BRAND.name)}</strong>
-
-<br>
-
-Automotive Lead Management
-
-</div>
-
-</div>
+  </div>
 
 </div>
 
 </body>
-
 </html>
 `;
 }
-
 
 /* =========================================================
    ADMIN DASHBOARD DATA
@@ -1181,7 +989,6 @@ async function getDashboardData(c) {
       SELECT
         COUNT(*) AS total,
         COALESCE(SUM(commission_amount),0) AS commission_total,
-
         COALESCE(
           SUM(
             CASE
@@ -1191,7 +998,6 @@ async function getDashboardData(c) {
             END
           ),0
         ) AS payable_total,
-
         COALESCE(
           SUM(
             CASE
@@ -1201,7 +1007,6 @@ async function getDashboardData(c) {
             END
           ),0
         ) AS paid_total
-
       FROM leads
     `).first(),
 
@@ -1209,14 +1014,10 @@ async function getDashboardData(c) {
       SELECT
         leads.*,
         dealerships.name AS dealership_name
-
       FROM leads
-
       LEFT JOIN dealerships
         ON dealerships.id = leads.dealership_id
-
       ORDER BY leads.id DESC
-
       LIMIT 10
     `).all(),
 
@@ -1224,196 +1025,128 @@ async function getDashboardData(c) {
       SELECT
         activity_log.*,
         users.name AS user_name
-
       FROM activity_log
-
       LEFT JOIN users
         ON users.id = activity_log.user_id
-
       ORDER BY activity_log.id DESC
-
       LIMIT 10
     `).all()
 
   ]);
 
   return {
-
-    users:results[0]?.total || 0,
-
-    hunters:results[1]?.total || 0,
-
-    dealerships:results[2]?.total || 0,
-
-    leads:results[3]?.total || 0,
-
-    statuses:results[4]?.results || [],
-
-    commissions:results[5] || {},
-
-    recentLeads:results[6]?.results || [],
-
-    activity:results[7]?.results || []
-
+    users: results[0]?.total || 0,
+    hunters: results[1]?.total || 0,
+    dealerships: results[2]?.total || 0,
+    leads: results[3]?.total || 0,
+    statuses: results[4]?.results || [],
+    commissions: results[5] || {},
+    recentLeads: results[6]?.results || [],
+    activity: results[7]?.results || []
   };
 }
-
 
 /* =========================================================
    ADMIN DASHBOARD
 ========================================================= */
 
-function adminDashboard(user,data) {
+function adminDashboard(user, data) {
 
   const statusCards = data.statuses.length
-
     ? data.statuses.map((item) => `
-
-<div class="stat">
-
-<h3>
-${escapeHtml(statusLabel(item.status))}
-</h3>
-
-<strong>
-${item.total}
-</strong>
-
-</div>
-
-`).join("")
-
+      <div class="stat">
+        <h3>${escapeHtml(statusLabel(item.status))}</h3>
+        <strong>${item.total}</strong>
+      </div>
+    `).join("")
     : `
-<div class="card empty">
-No leads yet.
-</div>
-`;
+      <div class="card empty">
+        No leads yet.
+      </div>
+    `;
 
   return `
 <!DOCTYPE html>
-
 <html>
-
 <head>
-
 <meta charset="UTF-8">
-
-<meta
-name="viewport"
-content="width=device-width,initial-scale=1"
->
-
-<title>Admin Dashboard - ${escapeHtml(BRAND.name)}</title>
-
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin Dashboard | Sibakane T & O Auto</title>
 ${baseStyles()}
-
 </head>
 
 <body>
 
-<header>
-
-${brandLogo()}
-
-<nav>
-
-<a href="/admin">
-Dashboard
-</a>
-
-<a href="/admin/leads">
-Leads
-</a>
-
-<a href="/admin/hunters">
-Hunters
-</a>
-
-<a href="/admin/dealerships">
-Dealerships
-</a>
-
-<a href="/admin/users">
-Users
-</a>
-
-<a href="/logout">
-Logout
-</a>
-
-</nav>
-
-</header>
+${brandedHeader("Admin Control Centre", [
+  { href:"/admin", label:"Dashboard", active:true },
+  { href:"/admin/leads", label:"Leads" },
+  { href:"/admin/hunters", label:"Hunters" },
+  { href:"/admin/dealerships", label:"Dealerships" },
+  { href:"/admin/users", label:"Users" },
+  { href:"/logout", label:"Logout" }
+])}
 
 <main>
 
-<div class="brand-banner">
+<div class="brand-hero">
 
-${brandLogo()}
+  <h1>
+    SIBAKANE <span>T & O</span> AUTO
+  </h1>
 
-<p style="margin:12px 0 0;color:#fff;opacity:.9;">
+  <div class="gold-line"></div>
 
-Admin Control Centre
-
-</p>
+  <p>
+    Admin Control Centre · Your Journey. Our Commitment.
+  </p>
 
 </div>
-
 
 <div class="card">
 
-<h2>
-Admin Control Centre
-</h2>
+  <h2>Welcome, ${escapeHtml(user.name)}</h2>
 
-<p>
-Welcome
-<strong>
-${escapeHtml(user.name)}
-</strong>
-</p>
+  <p>
+    You have full administrative control over leads,
+    hunters, dealerships and commission management.
+  </p>
 
-<p>
-${escapeHtml(user.email)}
-</p>
-
-<p>
-
-<span class="badge gold-badge">
-● SYSTEM ONLINE
-</span>
-
-</p>
+  <span class="badge success">
+    ● SYSTEM ONLINE
+  </span>
 
 </div>
-
 
 <div class="grid">
 
-<div class="stat">
+  <div class="stat">
+    <h3>Total Users</h3>
+    <strong>${data.users}</strong>
+  </div>
 
-<h3>
-Total Users
-</h3>
+  <div class="stat">
+    <h3>Active Hunters</h3>
+    <strong>${data.hunters}</strong>
+  </div>
 
-<strong>
-${data.users}
-</strong>
+  <div class="stat">
+    <h3>Active Dealerships</h3>
+    <strong>${data.dealerships}</strong>
+  </div>
 
-</div>
+  <div class="stat">
+    <h3>Total Leads</h3>
+    <strong>${data.leads}</strong>
+  </div>
 
+  <div class="stat">
+    <h3>Payable Commission</h3>
+    <strong>
+      R${Number(data.commissions.payable_total || 0).toFixed(2)}
+    </strong>
+  </div>
 
-<div class="stat">
-
-<h3>
-Active Hunters
-</h3>
-
-<strong>
-${data.hunters}
-</strong>
-
-</div>
-
-
-<div class
+  <div class="stat">
+    <h3>Paid Commission</h3>
+    <strong>
+      R${N
